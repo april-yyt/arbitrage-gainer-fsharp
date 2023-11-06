@@ -123,7 +123,7 @@ let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) =
 // dictate a daily maximal volume, this should be reset upon a new
 // day, and a strategy that was deactivated due to reaching the
 // max volume should be reset.
-let resetForNewDay (input: NewDayBegan) (output: DailyTransactionsVolumeUpdated) =
+let resetForNewDay (input: NewDayBegan) =
     {
         DailyReset = true
         DailyTransactionsVolume = 0 // This value doesn't matter since it is getting reset
