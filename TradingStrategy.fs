@@ -4,8 +4,9 @@ type TradingStrategyParameters = {
     TrackedCurrencies: int
     MinPriceSpread: float
     MinTransactionProfit: float
-    MaxAmountTotal: float
-    MaxDailyVolume: int
+    MaxAmountTotal: float // crypto quantity * price, buying and
+                          // selling, per transaction
+    MaxDailyVolume: float // quantity of cryptocurrency
 }
 
 type Event =
@@ -22,8 +23,8 @@ type Event =
 type DailyTransactionsVolumeUpdated = {
     // TODO: find out if the user input parameters can be saved as globals
     // (shared state lecture on Monday?)
-    MaxDailyVolume: int
-    DailyTransactionsVolume: int
+    MaxDailyVolume: float
+    DailyTransactionsVolume: float
     TradeBookedValue: float
     DailyReset: bool
 }
@@ -44,7 +45,7 @@ type TotalTransactionsAmountUpdated = {
 }
 
 type Cause =
-    | MaximalDailyTransactionVolumeReached 
+    | MaximalDailyTransactionVolumeReached
     | MaximalTotalTransactionAmountReached
     | UserInvocation
 
@@ -57,10 +58,10 @@ type TradingParametersInputed = {
     MinPriceSpread: float
     MinTransactionProfit: float
     MaxAmountTotal: float
-    MaxDailyVolume: int
+    MaxDailyVolume: float
 }
 
-type UpdateProcessed = 
+type UpdateProcessed =
     | TradingStrategyDeactivated of TradingStrategyDeactivated
     | TradingContinuedWithUpdatedAmount of TradingContinuedWithUpdatedAmount
     | TradingContinuedWithUpdatedVolume of TradingContinuedWithUpdatedVolume
@@ -80,7 +81,7 @@ type TradingStrategyActivated = {
 }
 
 // Processing an update to the transactions daily volume
-// TODO: confirm that volume is number of transactions, and that I just increment to update it
+// TODO: fix volume update calculation
 let updateTransactionsVolume (input: DailyTransactionsVolumeUpdated) =
     let dailyVol = input.DailyTransactionsVolume
     let tradeBooked = (input.TradeBookedValue > 0)
@@ -104,7 +105,7 @@ let updateTransactionsAmount (input: TotalTransactionsAmountUpdated) =
 
 // Processing a new trading strategy provided by the user
 let acceptNewTradingStrategy (input: TradingParametersInputed) =
-     { AcceptedStrategy = { 
+     { AcceptedStrategy = {
         TrackedCurrencies = input.TrackedCurrencies
         MinPriceSpread = input.MinPriceSpread
         MinTransactionProfit = input.MinTransactionProfit
@@ -138,8 +139,8 @@ let resetForNewDay (input: NewDayBegan) =
 // should be reactivated when the daily volume is reset.
 let reactivateUponNewDay (input: NewDayBegan): TradingStrategyActivated option =
     match input.PrevDayDeactivated with
-    | Some x -> 
-        match x.Cause with 
+    | Some x ->
+        match x.Cause with
         | MaximalDailyTransactionVolumeReached -> Some { Field = true }
         | _ -> None
     | None -> None
