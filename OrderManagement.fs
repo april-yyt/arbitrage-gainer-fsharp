@@ -40,17 +40,19 @@ type Event =
     | None
 
 // Helper Functions (Placeholders for actual implementations)
-let generateOrderID () = // Logic to generate unique OrderID
-    1001 // Placeholder for actual ID generation logic
+open System
 
-let generateTradeID () = // Logic to generate unique TradeID
-    2001 // Placeholder for actual ID generation logic
+let generateOrderID () =
+    Guid.NewGuid().ToString()
+
+let generateTradeID () =
+    Guid.NewGuid().ToString()
 
 let recordOrder (orderDetails: OrderDetails) = // Logic to record order in database
-    true // Placeholder for actual database recording success
+    true // Placeholder for actual database recording process, depends on choice of db
 
 let executeTrade (orderDetails: OrderDetails) = // Logic to execute trade with external systems
-    true // Placeholder for actual trade execution success
+    true // Placeholder for actual trade execution process, depends on choice of API to place the transactions
 
 let notifyUser (message: string) = // Logic to notify user of order status
     true // Placeholder for actual user notification logic
