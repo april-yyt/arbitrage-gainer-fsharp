@@ -1,4 +1,4 @@
-module CryptoList
+module CrossTradedCryptos
 
 type CryptosRequestCause = 
     | UserInvocation
@@ -36,6 +36,7 @@ type CrossTradedCryptosUpdated = { UpdatedCrossTradedCryptos: list<CurrencyPair>
 type Event =
     | CrossTradedCryptosRequested of CrossTradedCryptosRequested
     | CrossTradedCryptosUpdated of CrossTradedCryptosUpdated
+    | CrossTradedCryptosUploaded
 
 
 
@@ -75,7 +76,19 @@ let updateCrossTradedCryptos (input: CrossTradedCryptosRequested) =
         pairs
         |> List.filter (fun (x, y) -> (x <> y)) // filter out the duplicate pairs
         |> List.map (fun (x, y) -> newCurrencyPair x y)  // turn into currency pairs
-    let pairsOfCurrPairs = List.allPairs currencyPairs currencyPairs
-    pairsOfCurrPairs
-    |> List.filter (fun x -> not (currencyPairsEqual x)) // Filter out duplicate currency pairs
-    // TODO: think on this implementation; how do we filter out the duplicates without ending up wiht a list of pairs of pairs?    
+    { UpdatedCrossTradedCryptos = currencyPairs }
+
+// This is a placeholder function. In the next milestone, the currency pair string
+// will be uploaded to the third party cross-traded cryptocurrencies database, rather
+// than just printed as they are here.
+// Assumption about future functionality: duplicate database entries will not be added.
+let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
+    let rec printer (lst: List<CurrencyPair>) =
+        match lst.Length with
+        | 0 -> ()
+        | _ -> 
+            printfn "%s-%s" lst.Head.Currency1 lst.Head.Currency2
+            printer lst.Tail
+    printer input.UpdatedCrossTradedCryptos
+    CrossTradedCryptosUploaded
+    
