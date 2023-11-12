@@ -1,13 +1,19 @@
 module OrderManagement
 
-// Types
-/// Create Order
+// ---------------------------
+// Types and Event Definitions
+// ---------------------------
+
+// Common Types
 type Currency = string
 type Price = float
 type OrderType = Buy | Sell
 type Quantity = int
 type Exchange = string
+type OrderID = int
+type TradeID = int
 
+// Order Details Type
 type OrderDetails = {
     Currency: Currency
     Price: Price
@@ -16,105 +22,32 @@ type OrderDetails = {
     Exchange: Exchange
 }
 
+// Event Types for Various Workflows
 type OrderEmitted = OrderDetails list
+type OrderInitialized = { OrderID: OrderID; OrderDetails: OrderDetails }
+type TradeExecutionConfirmation = { OrderID: OrderID; TradeID: TradeID }
 
-/// Trade Execution
-type OrderID = int
-type TradeID = int
+type FulfillmentDetails = | Filled | PartiallyFilled | OnlyOneSideFilled | NotFilled
+type TradeExecuted = { OrderID: OrderID; OrderDetails: OrderDetails }
+type OrderFulfillmentStatus = { OrderID: OrderID; FulfillmentDetails: FulfillmentDetails }
 
-type OrderInitialized = {
-    OrderID: OrderID
-    OrderDetails: OrderDetails
-}
+type UpdateTransactionVolume = { OrderID: OrderID; TransactionVolume: float }
+type UpdateTransactionAmount = { OrderID: OrderID; TransactionAmount: float }
+type OrderFulfillmentAction = | UpdateTransactionTotals of UpdateTransactionVolume * UpdateTransactionAmount | OrderOneSideFilled
 
-type TradeExecutionConfirmation = {
-    OrderID: OrderID
-    TradeID: TradeID
-}
-
-/// Order Fulfillment
-type FulfillmentDetails =
-    | Filled
-    | PartiallyFilled
-    | OnlyOneSideFilled
-    | NotFilled
-
-type TradeExecuted = {
-    OrderID: OrderID
-    OrderDetails: OrderDetails
-}
-
-type OrderFulfillmentStatus = {
-    OrderID: OrderID
-    FulfillmentDetails: FulfillmentDetails
-}
-
-/// Update Transaction Totals
-type UpdateTransactionVolume = {
-    OrderID: OrderID
-    TransactionVolume: float 
-}
-
-type UpdateTransactionAmount = {
-    OrderID: OrderID
-    TransactionAmount: float 
-}
-/// *type for amt and vol need to be fixed*
-
-type OrderFulfillmentAction =
-    | UpdateTransactionTotals of UpdateTransactionVolume * UpdateTransactionAmount
-    | OrderOneSideFilled
-
-type OrderFulfillmentStatus = {
-    OrderID: OrderID
-    FulfillmentDetails: FulfillmentDetails
-}
-
-
-/// User notification when only one side of the order is filled
-type OrderOneSideFilled = {
-    OrderID: OrderID
-    FulfillmentDetails: FulfillmentDetails
-}
-
+type OrderOneSideFilled = { OrderID: OrderID; FulfillmentDetails: FulfillmentDetails }
 type NotificationSentConfirmation = OrderID
 
-/// Push order update
-type OrderUpdateEvent = {
-    OrderID: OrderID
-    OrderDetails: OrderDetails
-}
+type OrderUpdateEvent = { OrderID: OrderID; OrderDetails: OrderDetails }
+type OrderStatusUpdateReceived = { OrderID: OrderID; ExchangeName: string }
 
-type OrderStatusUpdateReceived = {
-    OrderID: OrderID
-    ExchangeName: string
-}
+type OrderProcessingError = { OrderID: OrderID; ErrorDetails: string }
+type ErrorHandledConfirmation = { OrderID: OrderID; CorrectiveAction: string }
 
-/// Handle Errors
-type OrderProcessingError = {
-    OrderID: OrderID
-    ErrorDetails: string
-}
+type DatabaseOperationRequest = { OperationType: string; Data: string }
+type DatabaseOperationConfirmation = { OperationType: string; Result: string }
 
-type ErrorHandledConfirmation = {
-    OrderID: OrderID
-    CorrectiveAction: string
-}
-
-/// DB Operations
-type DatabaseOperationRequest = {
-    OperationType: string
-    Data: string // to be modified in the next milestone
-}
-
-type DatabaseOperationConfirmation = {
-    OperationType: string
-    Result: string
-}
-
-
-
-// Events
+// Main Event Type
 type Event =
     | OrderCreated of OrderID
     | TradeExecuted of TradeID option
@@ -129,80 +62,51 @@ type Event =
     | OrderStatusUpdateReceived of OrderStatusUpdateReceived
     | None
 
+// -------------------------
+// Helper Function Definitions
+// -------------------------
 
-
-// Helper Functions (Placeholders for actual implementations)
-
-/// Create Order
 open System
 
-let generateOrderID () =
-    Guid.NewGuid().ToString()
+let generateOrderID () = Guid.NewGuid().ToString()
+let generateTradeID () = Guid.NewGuid().ToString()
 
-let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list = 
-    orderEmitted
+// Helper functions for Create Order Workflow
+let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list = orderEmitted
+let initiateBuySellOrder (orderDetails: OrderDetails) : OrderDetails = orderDetails
+let recordOrderInDatabase (orderDetails: OrderDetails) : bool = true
 
-let initiateBuySellOrder (orderDetails: OrderDetails) : OrderDetails =
-    orderDetails
+// Helper functions for Trade Execution Workflow
+let executeTrade (orderDetails: OrderDetails) : bool = true
+let updateOrderStatusToExecuted (orderId: OrderID) : bool = true
 
-let recordOrderInDatabase (orderDetails: OrderDetails) : bool =
-    true
+// Helper functions for Order Fulfillment Workflow
+let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails = Filled 
+let updateTransactionTotals (orderId: OrderID, fulfillmentDetails: FulfillmentDetails) : bool = true
+let userNotification (orderId: OrderID, message: string) : bool = true
 
-/// Trade Execution
-let generateTradeID () =
-    Guid.NewGuid().ToString()
+// Helper functions for Update Transaction Totals Workflow
+let createOrderWithRemainingAmount (orderId: OrderID) : bool = true
 
-let executeTrade (orderDetails: OrderDetails) : bool =
-    true
+// Helper functions for User Notification Workflow
+let sendEmailToUser (orderId: OrderID) : bool = true
+let checkIfNotificationSent (orderId: OrderID) : bool = true
 
-let updateOrderStatusToExecuted (orderId: OrderID) : bool =
-    true
+// Helper functions for Push Order Update Workflow
+let connectToExchanges () : bool = true
+let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : bool = true
 
-/// Order Fulfillment
-let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails =
-    Filled 
+// Helper functions for Handle Order Error Workflow
+let detectError (error: OrderProcessingError) : bool = true
+let handleError (error: OrderProcessingError) : bool = true
 
-let updateTransactionTotals (orderId: OrderID, fulfillmentDetails: FulfillmentDetails) : bool =
-    true
+// Helper functions for Database Operations Workflow
+let connectToDatabase () : bool = true
+let performDatabaseOperation (dbRequest: DatabaseOperationRequest) : bool = true
 
-let userNotification (orderId: OrderID, message: string) : bool =
-    true
-
-/// Update Transaction Totals
-let createOrderWithRemainingAmount (orderId: OrderID) : bool =
-    true
-
-/// User notification when only one side of the order is filled
-let sendEmailToUser (orderId: OrderID) : bool =
-    true
-
-let checkIfNotificationSent (orderId: OrderID) : bool =
-    true
-
-/// Push order update
-let connectToExchanges () : bool =
-    true
-
-let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : bool =
-    true
-
-/// Handle Erroes
-let detectError (error: OrderProcessingError) : bool =
-    true
-
-let handleError (error: OrderProcessingError) : bool =
-    true
-
-/// DB Operations
-let connectToDatabase () : bool =
-    true
-
-let performDatabaseOperation (dbRequest: DatabaseOperationRequest) : bool =
-    true
-
-
-
-// Implementation of Workflows
+// -------------------------
+// Workflow Implementations
+// -------------------------
 
 // Workflow: Create Order
 let processSingleOrder (orderDetails: OrderDetails) : OrderCreationConfirmation =
@@ -235,7 +139,7 @@ let orderFulfillmentWorkflow (tradeExecuted: TradeExecuted) : OrderFulfillmentSt
         | false -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = NotFilled } // Error in user notification
     | false -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = NotFilled } // Error in updating transaction totals
 
-/// Workflow: Update Transaction Totals
+// Workflow: Update Transaction Totals
 let updateTransactionTotalsWorkflow (orderFulfillmentStatus: OrderFulfillmentStatus) : OrderFulfillmentAction option =
     match orderFulfillmentStatus.FulfillmentDetails with
     | Filled ->
@@ -255,25 +159,25 @@ let updateTransactionTotalsWorkflow (orderFulfillmentStatus: OrderFulfillmentSta
     | NotFilled ->
         None // No action required for NotFilled status
 
-/// Workflow: User notification when only one side of the order is filled
+// Workflow: User Notification When Only One Side of the Order is Filled
 let userNotificationWorkflow (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
     match sendEmailToUser orderOneSideFilled.OrderID with
     | true -> 
         match checkIfNotificationSent orderOneSideFilled.OrderID with
         | true -> Some orderOneSideFilled.OrderID
-        | false -> None
-    | false -> None
+        | false -> None // Notification not sent
+    | false -> None // Email sending failed
 
-/// Workflow: Push order update
+// Workflow: Push Order Update
 let pushOrderUpdateWorkflow (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateReceived option =
     match connectToExchanges () with
     | true ->
         match pushOrderUpdateFromExchange orderUpdateEvent with
         | true -> Some { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
-        | false -> None // update wasn't pushed
-    | false -> None // connection to exchanges failed
+        | false -> None // Update wasn't pushed
+    | false -> None // Connection to exchanges failed
 
-/// Workflow: Handle Errors
+// Workflow: Handle Order Errors
 let handleOrderErrorWorkflow (orderError: OrderProcessingError) : ErrorHandledConfirmation option =
     match detectError orderError with
     | true ->
@@ -282,7 +186,7 @@ let handleOrderErrorWorkflow (orderError: OrderProcessingError) : ErrorHandledCo
         | false -> None // Error not handled
     | false -> None // Error not detected
 
-/// Workflow: DB Operations
+// Workflow: Database Operations
 let databaseOperationsWorkflow (dbRequest: DatabaseOperationRequest) : DatabaseOperationConfirmation option =
     match connectToDatabase () with
     | true ->
