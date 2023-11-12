@@ -120,6 +120,9 @@ type TradingParametersInputed =
 type TradingStrategyAccepted =
     { AcceptedStrategy: TradingStrategyParameters }
 
+type TradingStrategyActivated =
+    { ActivatedStrategy: TradingStrategyParameters }
+
 type NewDayBegan =
     { PrevDayDeactivated: TradingStrategyDeactivated option
       TradingStrategy: TradingStrategyParameters }
@@ -168,7 +171,9 @@ let acceptNewTradingStrategy (input: TradingParametersInputed) =
 
 // Activating an accepted trading strategy, as needed
 // TODO: output an event
-let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) = tradingStrategyAgent.Post(Activate)
+let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) : TradingStrategyActivated = 
+    tradingStrategyAgent.Post(Activate)
+    { ActivatedStrategy = input.AcceptedStrategy}
 
 // Resetting for the day.
 //
@@ -185,11 +190,12 @@ let resetForNewDay (input: NewDayBegan) =
 //
 // A strategy that was deactivated due to reaching the max volume
 // should be reactivated when the daily volume is reset.
-// TODO: output an event
-let reactivateUponNewDay (input: NewDayBegan) =
+let reactivateUponNewDay (input: NewDayBegan): TradingStrategyActivated option =
     match input.PrevDayDeactivated with
     | Some x ->
         match x.Cause with
-        | MaximalDailyTransactionVolumeReached -> tradingStrategyAgent.Post(Activate)
-        | _ -> () // Syntax ref: https://stackoverflow.com/questions/18095978/how-to-return-unit-from-an-expressions-in-f
-    | None -> ()
+        | MaximalDailyTransactionVolumeReached -> 
+            tradingStrategyAgent.Post(Activate)
+            Some { ActivatedStrategy = input.TradingStrategy }
+        | _ -> None
+    | None -> None
