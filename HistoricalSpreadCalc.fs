@@ -18,22 +18,13 @@ type ArbitrageOpportunity = {
 
 type ArbitrageOpportunitiesIdentified = ArbitrageOpportunity list
 
-
-type Quote = {
-    CurrencyPair: CurrencyPair
-    Exchange: string
-    BidPrice: float
-    AskPrice: float
-}
-
 type CurrencyPair = {
     Currency1: string
     Currency2: string
 }
 
 type BucketedQuotes = {
-    CurrencyPair: CurrencyPair
-    PriceData: list<(float, float)>
+    Quotes: list<Quote>
 }
 
 // -------------------------
