@@ -3,6 +3,10 @@ module ArbitrageOpportunity
 open OrderManagement
 open TradingStrategy
 
+// ---------------------------
+// Types and Event Definitions
+// ---------------------------
+
 type Time = int
 type Quote = {
     Exchange: Exchange
@@ -21,23 +25,26 @@ type Event =
     | OrdersEmitted
 
 type QuoteFeedSubscribed = {
-    CurrencyPairs: list<CurrencyPair>
+    CurrencyPairs: CurrencyPair list
 }
 type QuoteFeedUnsubscribed = {
-    CurrencyPairs: list<CurrencyPair>
+    CurrencyPairs: CurrencyPair list
 }
 type MarketDataRetrieved = {
     Quote: Quote
 }
 type OrderEmitted = {
-    Orders: list<OrderDetails>
+    Orders: OrderDetails list
 }
 
 type QuoteMessage = 
-    | UpdateQuote of Quote
-    | RetrieveQuote of AsyncReplyChannel<list<Quote>>
+    | UpdateData of Quote
+    | RetrieveLatestData of AsyncReplyChannel<Quote list>
 
+// ------
 // Agents: each agent stores a list consisting of the latest Quote for each currency pair
+// ------
+
 let bitstampAgent =
     MailboxProcessor.Start(fun inbox ->
         let rec loop bitstampData =
@@ -47,9 +54,9 @@ let bitstampAgent =
                 match msg with
                 | UpdateData newData -> 
                     // tentative 
-                    let updatedBitstampData = newData :: (bitstampData |> List.filter(fun x -> x.CurrencyPair != newData.CurrencyPair))
+                    let updatedBitstampData = newData :: (bitstampData |> List.filter(fun x -> x.CurrencyPair <> newData.CurrencyPair))
                     return! loop updatedBitstampData 
-                | RetrieveData replyChannel ->
+                | RetrieveLatestData replyChannel ->
                     replyChannel.Reply(bitstampData)
                     return! loop bitstampData
             }
@@ -63,9 +70,9 @@ let bitfinexAgent =
 
                 match msg with
                 | UpdateData newData -> 
-                    let updatedBitfinexData = newData :: (bitfinexData |> List.filter(fun x -> x.CurrencyPair != newData.CurrencyPair))
+                    let updatedBitfinexData = newData :: (bitfinexData |> List.filter(fun x -> x.CurrencyPair <> newData.CurrencyPair))
                     return! loop updatedBitstampData 
-                | RetrieveData replyChannel ->
+                | RetrieveLatestData replyChannel ->
                     replyChannel.Reply(bitfinexData)
                     return! loop bitfinexData
             }
@@ -79,18 +86,22 @@ let krakenAgent =
 
                 match msg with
                 | UpdateData newData -> 
-                    let updatedKrakenData = newData :: (krakenData |> List.filter(fun x -> x.CurrencyPair != newData.CurrencyPair))
+                    let updatedKrakenData = newData :: (krakenData |> List.filter(fun x -> x.CurrencyPair <> newData.CurrencyPair))
                     return! loop updatedKrakenData 
-                | RetrieveData replyChannel ->
+                | RetrieveLatestData replyChannel ->
                     replyChannel.Reply(krakenData)
                     return! loop krakenData
             }
         loop [])
 
+// ----------
+// Workflows
+// ----------
 
 // Workflow: After trading strategy is activated, subscribe to real-time data feed
 let subscribeToQuoteFeed (input: TradingStrategyActivated) = 
     true // placeholder for subscribing logic
+
 
 // Workflow: Retrieve data from real-time data feed
 let retrieveDataFromRealTimeFeed (input: QuoteFeedSubscribed) : MarketDataRetrieved = 
@@ -99,6 +110,7 @@ let retrieveDataFromRealTimeFeed (input: QuoteFeedSubscribed) : MarketDataRetrie
     // this is under the assumption that the real time market data keeps coming
     // in separately (one quote for one currency pair each time). Each time a 
     // quote comes in, we do the trading immediately
+
 
 // Workflow: Assess Real Time Arbitrage Opportunity
 let strategy = tradingStrategyAgent.PostAndReply(GetParams)
@@ -109,11 +121,12 @@ let minPriceSpreadReached (ask: Quote) (bid: Quote) =
     priceSpread >= strategy.minPriceSpread
 
 let getAgentFromQuote (data: Quote) = 
-    match data with
-    | data when data.Exchange = Bitstamp -> bitstampAgent
-    | data when data.Exchange = Bitfinex -> bitfinexAgent
-    | data when data.Exchange = Kraken -> krakenAgent
+    match data.Exchange with
+    | Bitstamp -> bitstampAgent
+    | Bitfinex -> bitfinexAgent
+    | Kraken -> krakenAgent
 
+// calculate order volume based on user provided limits
 let calculateWorthwhileTransactionVolume (ask: Quote) (bid: Quote) = 
     let idealVolume = min ask.AskSize bid.BidSize
     let minProfitReached = idealVolume * priceSpread >= strategy.MinTransactionProfit
@@ -131,38 +144,41 @@ let identifyWorthwhileTransactions (ask: Quote) (bid: Quote) =
         let worthwhileTransactionVolume = calculateWorthwhileTransactionVolume ask bid
         match worthwhileTransactionVolume with
         | worthwhileTransactionVolume when worthwhileTransactionVolume > 0 ->
+            // assuming that we can keep trading a quote if the traded volume has not reached the ask/bid size yet
             let askAgent = getAgentFromQuote ask
             let remainingAskData = {
                 Exchange = ask.Exchange;
-                Currency = ask.Currency;
+                CurrencyPair = ask.CurrencyPair;
                 AskPrice = ask.AskPrice;
                 AskSize = ask.AskSize - worthwhileTransactionVolume;
                 BidPrice = ask.BidPrice;
                 BidSize = ask.BidSize - worthwhileTransactionVolume;
+                Time = ask.Time;
             }
             askAgent.Post(UpdateData remainingAskData)
 
             let bidAgent = getAgentFromQuote bid
             let remainingBidData = {
                 Exchange = bid.Exchange;
-                Currency = bid.Currency;
+                CurrencyPair = bid.CurrencyPair;
                 AskPrice = bid.AskPrice;
                 AskSize = bid.AskSize - worthwhileTransactionVolume;
                 BidPrice = bid.BidPrice;
                 BidSize = bid.BidSize - worthwhileTransactionVolume;
+                Time = bid.Time;
             }
             bidAgent.Post(UpdateData remainingBidData)
 
             let buyOrder = {
                 Exchange = ask.Exchange;
-                Currency = ask.Currency;
+                Currency = ask.CurrencyPair.Currency1;
                 OrderType = Buy;
                 Price = ask.AskPrice;
                 Quantity = worthwhileTransactionVolume;
             }
             let sellOrder = {
                 Exchange = bid.Exchange;
-                Currency = bid.Currency;
+                Currency = bid.CurrencyPair.Currency1;
                 OrderType = Sell;
                 Price = bid.BidPrice;
                 Quantity = worthwhileTransactionVolume;
@@ -171,28 +187,19 @@ let identifyWorthwhileTransactions (ask: Quote) (bid: Quote) =
         | _ -> []
     | false -> []
 
-let assessArbitrageOpportunity (quote: Quote) (otherQuotes: list<Quote>): OrdersEmitted = 
-    otherQuotes |> List.fold (fun acc otherQuote ->
-        match otherQuote with
-        | otherQuote when quote.CurrencyPair = quote.CurrencyPair -> acc
-        | otherQuote when quote.CurrencyPair != quote.CurrencyPair ->
-            acc @ identifyWorthwhileTransactions quote otherQuote @ identifyWorthwhileTransactions otherQuote quote
-    ) []
-
-let assessRealTimeArbitrageOpportunity (marketDataRetrieved: MarketDataRetrieved): OrdersEmitted = 
+// Filter all quotes with same currency pair from other exchanges to identify 
+// arbitrage opportunity and emit corresponding orders
+let assessRealTimeArbitrageOpportunity (marketDataRetrieved: MarketDataRetrieved): OrderEmitted = 
     let quote = marketDataRetrieved.Quote
-    let bitstampData = bitstampAgent.PostAndReply(RetrieveBitstampData) 
-        |> List.filter(fun x -> x.CurrencyPair = quote.CurrencyPair)
-    let bitfinexData = bitstampAgent.PostAndReply(RetrieveBitfinexData)
-        |> List.filter(fun x -> x.CurrencyPair = quote.CurrencyPair)
-    let krakenData = krakenAgent.PostAndReply(RetrieveKrakenData)
-        |> List.filter(fun x -> x.CurrencyPair = quote.CurrencyPair)
-    let quotes = 
-        match quote with
-        | quote when quote.Exchange = Bitstamp -> bitfinexData @ krakenData
-        | quote when quote.Exchange = Bitfinex -> bitstampData @ krakenData
-        | quote when quote.Exchange = Kraken -> bitfinexData @ bitstampData
-    assessArbitrageOpportunity quote quotes
+    let bitstampData = bitstampAgent.PostAndReply(RetrieveLatestData) 
+    let bitfinexData = bitfinexAgent.PostAndReply(RetrieveLatestData)
+    let krakenData = krakenAgent.PostAndReply(RetrieveLatestData)
+    let allQuotes = bitstampData @ bitfinexData @ krakenData
+    let quotes = allQuotes 
+        |> List.filter(fun x -> quote.Exchange <> x.Exchange && quote.CurrencyPair = x.CurrencyPair) 
+        |> List.fold (fun acc otherQuote ->
+            acc @ identifyWorthwhileTransactions quote otherQuote @ identifyWorthwhileTransactions otherQuote quote
+        ) []
 
 
 // Workflow: Pause trading when trading strategy is deactivated
