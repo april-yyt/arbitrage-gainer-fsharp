@@ -21,7 +21,23 @@ The trading strategy is a bounded context representing a **core subdomain**. It 
 The trading strategy is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in
 
 ## Order Management
-TODO: April
+The OrderManagement a bounded context representing a **generic subdomain**. The workflows within this bounded context can all be found within [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs):
+
+- `createOrders` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L111)): Processes each order by capturing details, initiating buy/sell orders, and recording them in the database, ultimately generating an `OrderCreationConfirmation`.
+
+- `tradeExecution` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L123)): Manages the execution of trades and updates order statuses.
+
+- `orderFulfillment` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L132)): Tracks and updates the fulfillment status of orders, ensuring accurate management of order lifecycles.
+
+- `updateTransactionTotals` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L142)): Processes update about the transaction volume and amount, maintaining up-to-date records of transactions.
+
+- `userNotification` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L162)): Notifies users about their order status when only one side of the order is filled.
+
+- `handleOrderError` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L180)): Handles errors that occur during order processing. It involves detecting errors, performing corrective actions, and confirming error handling, thereby ensuring the robustness and reliability of the order management system.
+
+- `databaseOperations` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L189)): Handles database interactions, crucial for maintaining persistent data and state of the trading operations.
+
+
 
 ## Domain Services
 We have classified the following functionalities in our system as domain services, each consisting of a few simple workflows. 
