@@ -1,5 +1,7 @@
 module CrossTradedCryptos
 
+open HistoricalSpreadCalculation
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
@@ -19,18 +21,13 @@ type CryptoListEntry = {
     TradedAtKraken: bool
 }
 
-type CurrencyPair = {
-    Currency1: string
-    Currency2: string
-}
-
 // Events for the workflows in this domain service
 type CrossTradedCryptosRequested = { 
     CryptosRequestCause: CryptosRequestCause 
-    CryptoList: list<CryptoListEntry>
+    CryptoList: CryptoListEntry list
 }
 
-type CrossTradedCryptosUpdated = { UpdatedCrossTradedCryptos: list<CurrencyPair>}
+type CrossTradedCryptosUpdated = { UpdatedCrossTradedCryptos: CurrencyPair list}
 
 type Event =
     | CrossTradedCryptosRequested of CrossTradedCryptosRequested
@@ -40,7 +37,7 @@ type Event =
 // Message type used for the cross-traded cryptos agent
 type CrossTradedCryptosMessage =
     | UpdateCrossTradedCryptos of CurrencyPair
-    | RetrieveCrossTradedCryptos of AsyncReplyChannel<list<CurrencyPair>>
+    | RetrieveCrossTradedCryptos of AsyncReplyChannel<CurrencyPair list>
 
 // -------
 // Helpers
@@ -59,6 +56,10 @@ let newCurrencyPair c1 c2 =
 let currencyPairsEqual pairs =
     (((fst pairs).Currency1 = (snd pairs).Currency1) && ((fst pairs).Currency2 = (snd pairs).Currency2)) ||
     (((fst pairs).Currency1 = (snd pairs).Currency2) && ((fst pairs).Currency2 = (snd pairs).Currency1))
+
+// Helper to determine if a currency is traded at all exchanges.
+let currencyTradedAtAllExchanges (input: CryptoListEntry) : bool =
+    input.TradedAtBitfinex && input.TradedAtBitstamp && input.TradedAtKraken
 
 // ------
 // Agent
@@ -82,8 +83,9 @@ let crossTradedCryptosAgent =
             }
         loop [])
 
-let currencyTradedAtAllExchanges (input: CryptoListEntry) : bool =
-    input.TradedAtBitfinex && input.TradedAtBitstamp && input.TradedAtKraken
+// ----------
+// Workflows
+// ----------
 
 // Retrieve crypto list and update cross-traded cryptocurrencies.
 //
@@ -109,7 +111,7 @@ let updateCrossTradedCryptos (input: CrossTradedCryptosRequested) =
 // than just printed as they are here.
 // Assumption about future functionality: duplicate database entries will not be added.
 let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
-    let rec printer (lst: List<CurrencyPair>) =
+    let rec printer (lst: CurrencyPair list) =
         match lst.Length with
         | 0 -> ()
         | _ -> 
