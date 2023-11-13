@@ -1,5 +1,7 @@
 module HistoricalSpreadCalculation
 
+open ArbitrageOpportunity
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
