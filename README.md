@@ -18,7 +18,7 @@ The trading strategy is a bounded context representing a **core subdomain**. It 
 - `reactivateUponNewDay` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L189)): a strategy that was deactivated due to reaching the maximal daily volume should be reactivated when the daily volume is reset
 
 ## Arbitrage Opportunity
-TODO: Audrey
+The trading strategy is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in
 
 ## Order Management
 TODO: April
