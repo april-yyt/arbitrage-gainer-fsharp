@@ -24,10 +24,10 @@ type Event =
     | MarketDataRetrieved
     | OrdersEmitted
 
-type QuoteFeedSubscribed = {
+type RealTimeDataFeedSubscribed = {
     CurrencyPairs: CurrencyPair list
 }
-type QuoteFeedUnsubscribed = {
+type RealTimeDataFeedUnubscribed = {
     CurrencyPairs: CurrencyPair list
 }
 type MarketDataRetrieved = {
@@ -99,7 +99,7 @@ let krakenAgent =
 // ----------
 
 // Workflow: After trading strategy is activated, subscribe to real-time data feed
-let subscribeToQuoteFeed (input: TradingStrategyActivated) = 
+let subscribeToRealTimeDataFeed (input: TradingStrategyActivated) = 
     true // placeholder for subscribing logic
 
 
@@ -145,6 +145,7 @@ let identifyWorthwhileTransactions (ask: Quote) (bid: Quote) =
         match worthwhileTransactionVolume with
         | worthwhileTransactionVolume when worthwhileTransactionVolume > 0 ->
             // assuming that we can keep trading a quote if the traded volume has not reached the ask/bid size yet
+            // store the quote with remaining size back to agent
             let askAgent = getAgentFromQuote ask
             let remainingAskData = {
                 Exchange = ask.Exchange;
@@ -203,7 +204,7 @@ let assessRealTimeArbitrageOpportunity (marketDataRetrieved: MarketDataRetrieved
 
 
 // Workflow: Pause trading when trading strategy is deactivated
-let unsubscribeQuoteFeed (input: TradingStrategyDeactivated) = 
+let unsubscribeRealTimeDataFeed (input: TradingStrategyDeactivated) = 
     true // Placeholder for unsubscribing logic
 
 
