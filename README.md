@@ -50,4 +50,4 @@ We have classified the following functionalities in our system as domain service
 - `uploadCryptoPairsToDB` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L113)): note that this workflow will be implemented fully in the next milestone, as it represents a side effect.
 
 ### Historical Spread Calculation
-TODO: fill in once this is fully implemented/finalized
+- `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets. Loading the historical data file (third-party integration) and persisting the resulting arbitrage opportunities in a database (side-effect) will both be implemented in the next milestone(s).
