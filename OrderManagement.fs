@@ -121,7 +121,7 @@ let createOrders (ordersEmitted: OrderEmitted) : OrderCreationConfirmation list 
     |> List.map processSingleOrder
 
 // Workflow: Trade Execution
-let tradeExecutionWorkflow (orderInitialized: OrderInitialized) : TradeExecutionConfirmation option =
+let tradeExecution (orderInitialized: OrderInitialized) : TradeExecutionConfirmation option =
     match executeTrade orderInitialized.OrderDetails with
     | true ->
         match updateOrderStatusToExecuted orderInitialized.OrderID with
@@ -130,7 +130,7 @@ let tradeExecutionWorkflow (orderInitialized: OrderInitialized) : TradeExecution
     | false -> None // Error in executing trade
 
 // Workflow: Order Fulfillment
-let orderFulfillmentWorkflow (tradeExecuted: TradeExecuted) : OrderFulfillmentStatus =
+let orderFulfillment (tradeExecuted: TradeExecuted) : OrderFulfillmentStatus =
     let fulfillmentDetails = checkOrderFulfillment tradeExecuted.OrderDetails
     match updateTransactionTotals (tradeExecuted.OrderID, fulfillmentDetails) with
     | true ->
@@ -140,7 +140,7 @@ let orderFulfillmentWorkflow (tradeExecuted: TradeExecuted) : OrderFulfillmentSt
     | false -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = NotFilled } // Error in updating transaction totals
 
 // Workflow: Update Transaction Totals
-let updateTransactionTotalsWorkflow (orderFulfillmentStatus: OrderFulfillmentStatus) : OrderFulfillmentAction option =
+let updateTransactionTotals (orderFulfillmentStatus: OrderFulfillmentStatus) : OrderFulfillmentAction option =
     match orderFulfillmentStatus.FulfillmentDetails with
     | Filled ->
         let updateVolume = { OrderID = orderFulfillmentStatus.OrderID; TransactionVolume = 100.0 } // Placeholder values
@@ -160,7 +160,7 @@ let updateTransactionTotalsWorkflow (orderFulfillmentStatus: OrderFulfillmentSta
         None // No action required for NotFilled status
 
 // Workflow: User Notification When Only One Side of the Order is Filled
-let userNotificationWorkflow (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
+let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
     match sendEmailToUser orderOneSideFilled.OrderID with
     | true -> 
         match checkIfNotificationSent orderOneSideFilled.OrderID with
@@ -169,7 +169,7 @@ let userNotificationWorkflow (orderOneSideFilled: OrderOneSideFilled) : Notifica
     | false -> None // Email sending failed
 
 // Workflow: Push Order Update
-let pushOrderUpdateWorkflow (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateReceived option =
+let pushOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateReceived option =
     match connectToExchanges () with
     | true ->
         match pushOrderUpdateFromExchange orderUpdateEvent with
@@ -178,7 +178,7 @@ let pushOrderUpdateWorkflow (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUp
     | false -> None // Connection to exchanges failed
 
 // Workflow: Handle Order Errors
-let handleOrderErrorWorkflow (orderError: OrderProcessingError) : ErrorHandledConfirmation option =
+let handleOrderError (orderError: OrderProcessingError) : ErrorHandledConfirmation option =
     match detectError orderError with
     | true ->
         match handleError orderError with
@@ -187,10 +187,11 @@ let handleOrderErrorWorkflow (orderError: OrderProcessingError) : ErrorHandledCo
     | false -> None // Error not detected
 
 // Workflow: Database Operations
-let databaseOperationsWorkflow (dbRequest: DatabaseOperationRequest) : DatabaseOperationConfirmation option =
+let databaseOperations (dbRequest: DatabaseOperationRequest) : DatabaseOperationConfirmation option =
     match connectToDatabase () with
     | true ->
         match performDatabaseOperation dbRequest with
         | true -> Some { OperationType = dbRequest.OperationType; Result = "Success" }
         | false -> None // Operation failed
     | false -> None // Connection to database failed
+  
