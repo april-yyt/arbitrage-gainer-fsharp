@@ -82,7 +82,7 @@ let tradingStrategyAgent =
     // explicitly activated with an Activate message.
     )
 
-// The Event discriminated union type is not currently used; however, it will likely
+// The Event discriminated union type is not currently used in this module; however, it will likely
 // be helpful for linking the bounded contexts together in future milestones.
 type Event =
     | DailyTransactionsVolumeUpdated
@@ -132,7 +132,6 @@ let updateTransactionsVolume (input: DailyTransactionsVolumeUpdated) : TradingSt
     let tradeBookedVolume = input.TradeBookedValue
 
     match input.DailyReset with
-    // Syntax ref: https://stackoverflow.com/questions/29801418/f-can-i-return-a-discriminated-union-from-a-function
     | true ->
         volumeAgent.Post(Reset)
         None
@@ -170,7 +169,6 @@ let acceptNewTradingStrategy (input: TradingParametersInputed) =
     newStrat
 
 // Activating an accepted trading strategy, as needed
-// TODO: output an event
 let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) : TradingStrategyActivated = 
     tradingStrategyAgent.Post(Activate)
     { ActivatedStrategy = input.AcceptedStrategy}
