@@ -1,5 +1,6 @@
 # Arbitrage Gainer Milestone II
 **Team 6:** Sahana Rangarajan (ssrangar), April Yang (yutongya), Audrey Zhou (yutongz7)
+
 **Miro Board link:** https://miro.com/app/board/uXjVNfeHKWc=/?share_link_id=780735329174
 ## Table of Contents
 1. [Trading Strategy](#trading-strategy)
