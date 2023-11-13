@@ -61,12 +61,14 @@ let identifyArbitrageOpportunities (quotes: list<Quote>) : list<ArbitrageOpportu
     let combinations = List.allPairs quotes quotes
     combinations
     |> List.choose (fun (quote1, quote2) ->
-        if quote1.CurrencyPair = quote2.CurrencyPair && quote1.Exchange <> quote2.Exchange then
+        match (quote1.CurrencyPair = quote2.CurrencyPair, quote1.Exchange <> quote2.Exchange) with
+        | (true, true) -> 
             let priceDifference = abs (quote1.BidPrice - quote2.AskPrice)
-            if priceDifference > 0.01m then
-                Some { Currency1 = fst quote1.CurrencyPair; Currency2 = snd quote1.CurrencyPair; NumberOfOpportunitiesIdentified = 1 }
-            else None
-        else None)
+            match priceDifference > 0.01m with
+            | true -> Some { Currency1 = fst quote1.CurrencyPair; Currency2 = snd quote1.CurrencyPair; NumberOfOpportunitiesIdentified = 1 }
+            | false -> None
+        | _ -> None)
+
 
 // -------------------------
 // Workflow Implementation
