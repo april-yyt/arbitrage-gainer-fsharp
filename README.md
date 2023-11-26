@@ -22,7 +22,19 @@ The trading strategy is a bounded context representing a **core subdomain**. It 
 Note that there are also two "helper workflows", `processNewTransactionVolume` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L150)) and `processNewTransactionAmount` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L156)). These functions' purpose is to link this bounded context to the order management bounded context by translating the events between both of them. This will be improved for the next milestone when we fully integrate the bounded contexts.
 
 ## Arbitrage Opportunity
-The trading strategy is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in
+The ArbitrageOpportunity is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in [ArbitrageOpportunity.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs):
+
+- `subscribeToRealTimeDataFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L101)): Subcribing to real-time data
+feed for top N currency pairs.
+
+- `retrieveDataFromRealTimeFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L106)): Upon receiving real-time
+data, process the data and starting trading
+
+- `assessRealTimeArbitrageOpportunity` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L115)): Based on user provided
+trading strategy, identify arbitrage opportunities and emit orders correspondingly
+
+- `unsubscribeRealTimeDataFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L207)): When trading strategy is 
+deactivated, pause trading and unsubscribe from real-time data feed
 
 ## Order Management
 The OrderManagement a bounded context representing a **generic subdomain**. The workflows within this bounded context can all be found within [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs):
