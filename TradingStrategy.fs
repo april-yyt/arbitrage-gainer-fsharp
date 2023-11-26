@@ -1,6 +1,11 @@
 module TradingStrategy
 
-open OrderManagement
+open Suave
+open Suave.Filters
+open Suave.Operators
+open Suave.Successful
+open Suave.Utils.Collections
+open Suave.RequestErrors
 
 // ---------------------------
 // Types and Event Definitions
@@ -75,6 +80,11 @@ type NewDayBegan =
     { PrevDayDeactivated: TradingStrategyDeactivated option
       TradingStrategy: TradingStrategyParameters }
 
+// TODO: duplicate code; delete after integration with order management
+type OrderID = int
+type UpdateTransactionVolume = { OrderID: OrderID; TransactionVolume: float }
+type UpdateTransactionAmount = { OrderID: OrderID; TransactionAmount: float }
+
 // -------
 // Agents
 // -------
@@ -96,22 +106,6 @@ let volumeAgent =
 
         loop 0.0 // Initial volume: 0.0
     )
-
-// Agent used to maintain and update the current running total transaction amount.
-let amountAgent =
-    MailboxProcessor.Start(fun inbox ->
-        let rec loop currAmount =
-            async {
-                let! msg = inbox.Receive()
-
-                match msg with
-                | UpdateAmount newAmount -> return! loop (currAmount + newAmount)
-                | CheckCurrentAmount replyChannel ->
-                    replyChannel.Reply(currAmount)
-                    return! loop currAmount
-            }
-
-        loop 0.0)
 
 
 // Helper to create initial values for a trading strategy; used by the trading strategy agent.
@@ -146,13 +140,13 @@ let tradingStrategyAgent =
 // Workflows
 // ----------
 
-// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 3.
+// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 4.
 let processNewTransactionVolume (updateTransactionVol: UpdateTransactionVolume) : TotalTransactionsAmountUpdated =
     {
         TradeBookedValue = updateTransactionVol.TransactionVolume
     }
 
-// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 3.
+// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 4.
 let processNewTransactionAmount (updateTransactionAmt: UpdateTransactionAmount) : DailyTransactionsVolumeUpdated =
     {
         TradeBookedValue = updateTransactionAmt.TransactionAmount
@@ -175,17 +169,6 @@ let updateTransactionsVolume (input: DailyTransactionsVolumeUpdated) : TradingSt
         match dailyVol + tradeBookedVolume with
         | x when x >= maxVol -> Some { Cause = MaximalDailyTransactionVolumeReached }
         | _ -> None
-
-// Processing an update to the transactions total amount
-let updateTransactionsAmount (input: TotalTransactionsAmountUpdated) : TradingStrategyDeactivated option =
-    let amount = amountAgent.PostAndReply(CheckCurrentAmount)
-    let tradeVal = input.TradeBookedValue
-    let maxAmt = tradingStrategyAgent.PostAndReply(GetParams).MaxAmountTotal
-    amountAgent.Post(UpdateAmount(amount + tradeVal))
-
-    match amount + tradeVal with
-    | x when x >= maxAmt -> Some { Cause = MaximalTotalTransactionAmountReached }
-    | _ -> None
 
 // Processing a new trading strategy provided by the user
 let acceptNewTradingStrategy (input: TradingParametersInputed) =
@@ -229,3 +212,63 @@ let reactivateUponNewDay (input: NewDayBegan): TradingStrategyActivated option =
             Some { ActivatedStrategy = input.TradingStrategy }
         | _ -> None
     | None -> None
+
+
+// ---------------------------
+// REST API Endpoint Handlers
+// ---------------------------
+
+let newTradingStrategy =
+// ref: https://theimowski.gitbooks.io/suave-music-store/content/en/query_parameters.html
+// ref: https://www.c-sharpcorner.com/article/routing-in-suave-io-web-development-with-f-sharp/ 
+    request (fun r ->
+    let trackedCurrencies = match r.queryParam "trackedcurrencies" with
+                            | Choice1Of2 tc -> int tc
+                            | _ -> 0 
+    let minPriceSpread = match r.queryParam "minpricespread" with
+                            | Choice1Of2 mps -> float mps
+                            | _ -> 0.0
+    let minTransactionProfit = match r.queryParam "minprofit" with
+                                | Choice1Of2 mp -> float mp
+                                | _ -> 0.0
+    let maxAmountTotal = match r.queryParam "maxamount" with
+                            | Choice1Of2 ma -> float ma
+                            | _ -> 0.0
+    let maxDailyVol = match r.queryParam "maxdailyvol" with
+                        | Choice1Of2 mdv -> float mdv
+                        | _ -> 0.0
+    let newStrat = {
+        TrackedCurrencies = trackedCurrencies
+        MinPriceSpread = minPriceSpread
+        MinTransactionProfit = minTransactionProfit
+        MaxAmountTotal = maxAmountTotal
+        MaxDailyVolume = maxDailyVol
+    }
+    tradingStrategyAgent.Post(UpdateStrategy {
+        TrackedCurrencies = trackedCurrencies
+        MinPriceSpread = minPriceSpread
+        MinTransactionProfit = minTransactionProfit
+        MaxAmountTotal = maxAmountTotal
+        MaxDailyVolume = maxDailyVol
+    })
+    OK (sprintf "New trading strategy inputed: %A" newStrat)
+    )
+
+let startTrading =
+    request (fun r ->
+    tradingStrategyAgent.Post(Activate)
+    OK "Trading strategy activated")
+
+let stopTrading =
+    request (fun r ->
+    tradingStrategyAgent.Post(Deactivate)
+    OK "Trading strategy deactivated"
+    )
+
+// TODO: check whether we want to conflate starting/stopping trading
+// with activating/deactivating trading strategy
+let app =
+    POST >=> choose
+        [ path "/tradingstrategy" >=> newTradingStrategy
+          path "/tradingstart" >=> startTrading
+          path "/tradingstop" >=> stopTrading ] 

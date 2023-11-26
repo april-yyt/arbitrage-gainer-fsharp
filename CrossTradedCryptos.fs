@@ -1,10 +1,16 @@
 module CrossTradedCryptos
 
-open HistoricalSpreadCalculation
+// open HistoricalSpreadCalculation
 
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
+
+// TODO: duplicate code; remove after integration with historical spread domain service
+type CurrencyPair = {
+    Currency1: string
+    Currency2: string
+}
 
 // Why the cross-traded cryptos were requested
 type CryptosRequestCause = 
