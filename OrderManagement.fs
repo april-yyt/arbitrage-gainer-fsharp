@@ -1,5 +1,9 @@
 module OrderManagement
 
+open BitfinexAPI
+open BitstampAPI
+open KrakenAPI
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
@@ -21,6 +25,18 @@ type OrderDetails = {
     Quantity: Quantity
     Exchange: Exchange
 }
+
+// testing using bitstamp's response
+type OrderResponse = {
+    Id: string
+    Market: string
+    Datetime: string
+    Type: string
+    Price: string
+    Amount: string
+    ClientOrderId: string
+}
+
 
 // Event Types for Various Workflows
 type OrderEmitted = OrderDetails list
