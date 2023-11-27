@@ -271,4 +271,4 @@ let app =
     POST >=> choose
         [ path "/tradingstrategy" >=> newTradingStrategy
           path "/tradingstart" >=> startTrading
-          path "/tradingstop" >=> stopTrading ] 
+          path "/tradingstop" >=> stopTrading ]
