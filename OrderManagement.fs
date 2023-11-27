@@ -39,6 +39,9 @@ type Event =
     | OrderErrorHandled of (OrderID * string) option
     | None
 
+
+// events that involves side effects
+
 // Helper Functions (Placeholders for actual implementations)
 let generateOrderID () = // Logic to generate unique OrderID
     1001 // Placeholder for actual ID generation logic
