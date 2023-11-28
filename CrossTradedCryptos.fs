@@ -67,28 +67,6 @@ let currencyPairsEqual pairs =
 let currencyTradedAtAllExchanges (input: CryptoListEntry) : bool =
     input.TradedAtBitfinex && input.TradedAtBitstamp && input.TradedAtKraken
 
-// ------
-// Agent
-// ------
-
-// Agent for the cross-traded cryptocurrencies; updates or retrieves
-// them on demand.
-let crossTradedCryptosAgent =
-    MailboxProcessor.Start(fun inbox ->
-        let rec loop crossTradedCryptos =
-            async {
-                let! msg = inbox.Receive()
-
-                match msg with
-                | UpdateCrossTradedCryptos newPair -> 
-                    let updatedCryptoPairs = newPair :: crossTradedCryptos
-                    return! loop updatedCryptoPairs 
-                | RetrieveCrossTradedCryptos replyChannel ->
-                    replyChannel.Reply(crossTradedCryptos)
-                    return! loop crossTradedCryptos
-            }
-        loop [])
-
 // ----------
 // Workflows
 // ----------
@@ -125,3 +103,28 @@ let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
             printer lst.Tail
     printer input.UpdatedCrossTradedCryptos
     CrossTradedCryptosUploaded
+
+type PairAtExchange = {
+    Exchange: string
+    CurrencyPair: CurrencyPair
+}
+
+let validCurrencyPairsFromFile (exchange: string) =
+    let pairs = System.IO.File.ReadLines(exchange + ".txt")
+    let filteredPairs = pairs // Read pairs from input file line by line
+                        |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
+                        |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
+                        |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
+    filteredPairs
+
+// Input: "Bitfinex", "Bitstamp", "Kraken"
+let pairsTradedAtAllExchanges (exchanges: string list) =
+    let exchangePairs = exchanges 
+                        |> List.map(validCurrencyPairsFromFile)
+                        |> Seq.concat
+    let pairsAtAll = exchangePairs
+                            |> Seq.countBy (fun x -> x.CurrencyPair) // Count how many exchanges this pair appears in
+                            |> Seq.filter (fun t -> (snd t) = exchanges.Length) // Filter for pairs that appear at all the exchanges
+                            |> Seq.map(fun t -> fst t) // Keep just the currency pairs from the countBy tuples
+    pairsAtAll
+
