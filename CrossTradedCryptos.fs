@@ -125,3 +125,17 @@ let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
             printer lst.Tail
     printer input.UpdatedCrossTradedCryptos
     CrossTradedCryptosUploaded
+
+let validCurrencyPairsFromFile (file: string) =
+    let pairs = System.IO.File.ReadLines(file)
+    let filteredPairs = pairs // Read pairs from input file line by line
+                        |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
+                        |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
+    filteredPairs
+
+let bitfinexPairs = validCurrencyPairsFromFile("Bitfinex.txt")
+let bitstampPairs = validCurrencyPairsFromFile("Bitstamp.txt")
+let krakenPairs = validCurrencyPairsFromFile("Kraken.txt")
+
+// let pairsTradedAtAllExchanges (pair: CurrencyPair) =
+
