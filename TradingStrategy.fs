@@ -128,6 +128,7 @@ let tradingStrategyAgent =
                 | Deactivate -> return! loop currParams false
                 | GetStatus replyChannel ->
                     replyChannel.Reply(activated)
+                    return! loop currParams activated
             }
 
         loop initTradingParams false // The new trading strategy should be deactivated until
