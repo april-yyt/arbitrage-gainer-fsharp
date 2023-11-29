@@ -3,6 +3,8 @@ module OrderManagement
 open BitfinexAPI
 open BitstampAPI
 open KrakenAPI
+open System.Net.Http
+open Newtonsoft.Json
 
 // ---------------------------
 // Types and Event Definitions
@@ -26,21 +28,10 @@ type OrderDetails = {
     Exchange: Exchange
 }
 
-// testing using bitstamp's response
-type OrderResponse = {
-    Id: string
-    Market: string
-    Datetime: string
-    Type: string
-    Price: string
-    Amount: string
-    ClientOrderId: string
-}
-
-
 // Event Types for Various Workflows
 type OrderEmitted = OrderDetails list
 type OrderInitialized = { OrderID: OrderID; OrderDetails: OrderDetails }
+
 type TradeExecutionConfirmation = { OrderID: OrderID; TradeID: TradeID }
 
 type FulfillmentDetails = | Filled | PartiallyFilled | OnlyOneSideFilled | NotFilled
@@ -88,9 +79,43 @@ let generateOrderID () = Guid.NewGuid().ToString()
 let generateTradeID () = Guid.NewGuid().ToString()
 
 // Helper functions for Create Order Workflow
-let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list = orderEmitted
-let initiateBuySellOrder (orderDetails: OrderDetails) : OrderDetails = orderDetails
-let recordOrderInDatabase (orderDetails: OrderDetails) : bool = true
+let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list = 
+    // Capture order details from the emitted event
+    orderEmitted
+
+let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
+    // Initiate buy or sell order based on exchange and order type
+    async {
+        match orderDetails.Exchange with
+        | "Bitfinex" -> 
+            let orderType = match orderDetails.OrderType with
+                            | Buy -> "buy"
+                            | Sell -> "sell"
+            await BitfinexAPI.submitOrder orderType orderDetails.Currency (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                | Some response -> Result.Ok (response.Id) 
+                | None -> Result.Error "Failed to submit order to Bitfinex")
+        | "Kraken" -> 
+            let orderType = match orderDetails.OrderType with
+                            | Buy -> "buy"
+                            | Sell -> "sell"
+            await KrakenAPI.submitOrder orderDetails.Currency orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                | Some response -> Result.Ok (response.Id) 
+                | None -> Result.Error "Failed to submit order to Kraken")
+        | "Bitstamp" -> 
+            let action = match orderDetails.OrderType with
+                         | Buy -> BitstampAPI.buyMarketOrder
+                         | Sell -> BitstampAPI.sellMarketOrder
+            await action orderDetails.Currency (orderDetails.Quantity.ToString()) None |> Async.map (function
+                | Some response -> Result.Ok (response.Id) 
+                | None -> Result.Error "Failed to submit order to Bitstamp")
+        | _ -> 
+            async.Return (Result.Error "Unsupported exchange")
+    }
+
+// to be implemented in next commit
+let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: OrderID) : Async<bool> = 
+    // Record the order in the database and return true if successful
+    async { return true }
 
 // Helper functions for Trade Execution Workflow
 let executeTrade (orderDetails: OrderDetails) : bool = true
@@ -125,16 +150,37 @@ let performDatabaseOperation (dbRequest: DatabaseOperationRequest) : bool = true
 // -------------------------
 
 // Workflow: Create Order
-let processSingleOrder (orderDetails: OrderDetails) : OrderCreationConfirmation =
-    let initiatedOrderDetails = initiateBuySellOrder orderDetails
-    match recordOrderInDatabase initiatedOrderDetails with
-    | true -> generateOrderID ()
-    | false -> "Error" // Placeholder for error handling
+let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderInitialized, string>> =
+    async {
+        let! result = initiateBuySellOrderAsync orderDetails
+        match result with
+        | Result.Ok orderID ->
+            let! recorded = recordOrderInDatabaseAsync orderDetails orderID
+            match recorded with
+            | true -> 
+                return Result.Ok { OrderID = orderID; OrderDetails = orderDetails }
+            | false -> 
+                return Result.Error "Failed to record order in database"
+        | Result.Error errMsg ->
+            return Result.Error errMsg
+    }
 
-let createOrders (ordersEmitted: OrderEmitted) : OrderCreationConfirmation list =
+let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, string> =
     ordersEmitted
-    |> List.collect captureOrderDetails
-    |> List.map processSingleOrder
+    |> List.map createOrderAsync
+    |> Async.Parallel
+    |> Async.RunSynchronously
+    |> Array.fold (fun acc result ->
+        match acc, result with
+        | Result.Ok initList, Result.Ok orderInit -> 
+            Result.Ok (orderInit :: initList)
+        | Result.Error errMsg, _ | _, Result.Error errMsg ->
+            Result.Error errMsg
+        | Result.Ok _, Result.Ok _ -> acc
+    ) (Result.Ok [])
+    |> function
+        | Result.Ok initList -> Result.Ok (List.rev initList)
+        | Result.Error errMsg -> Result.Error errMsg
 
 // Workflow: Trade Execution
 let tradeExecution (orderInitialized: OrderInitialized) : TradeExecutionConfirmation option =

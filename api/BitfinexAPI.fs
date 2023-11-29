@@ -6,7 +6,7 @@ open Newtonsoft.Json
 
 let private httpClient = new HttpClient()
 
-let submitOrder (symbol: string) (amount: string) (price: string) (orderType: string) =
+let submitOrder (orderType: string) (symbol: string) (amount: string) (price: string) =
     async {
         let url = "https://api.bitfinex.com/v2/auth/w/order/submit"
         let payload = sprintf "{\"type\": \"%s\", \"symbol\": \"%s\", \"amount\": \"%s\", \"price\": \"%s\"}" orderType symbol amount price
