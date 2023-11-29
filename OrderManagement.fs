@@ -5,6 +5,8 @@ open BitstampAPI
 open KrakenAPI
 open System.Net.Http
 open Newtonsoft.Json
+open DatabaseOperations
+open DatabaseSchema
 
 // ---------------------------
 // Types and Event Definitions
@@ -112,10 +114,23 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
             async.Return (Result.Error "Unsupported exchange")
     }
 
-// to be implemented in next commit
+
 let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: OrderID) : Async<bool> = 
-    // Record the order in the database and return true if successful
-    async { return true }
+    async {
+        let orderEntity = new OrderEntity()
+        orderEntity.PartitionKey <- orderDetails.Exchange 
+        orderEntity.RowKey <- Guid.NewGuid().ToString()
+        orderEntity.OrderID <- orderEntity.RowKey 
+        orderEntity.Currency <- orderDetails.Currency
+        orderEntity.Price <- orderDetails.Price
+        orderEntity.OrderType <- match orderDetails.OrderType with Buy -> "Buy" | Sell -> "Sell"
+        orderEntity.Quantity <- orderDetails.Quantity
+        orderEntity.Exchange <- orderDetails.Exchange
+
+        // functions in DatabaseOperations      
+        return addOrderToDatabase orderEntity
+    }
+
 
 // Helper functions for Trade Execution Workflow
 let executeTrade (orderDetails: OrderDetails) : bool = true
