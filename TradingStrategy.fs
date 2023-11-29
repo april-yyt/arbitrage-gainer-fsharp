@@ -17,11 +17,6 @@ type VolumeMessage =
     | CheckCurrentVolume of AsyncReplyChannel<float>
     | Reset
 
-// Message type used for the amount update agent
-type AmountMessage =
-    | UpdateAmount of float
-    | CheckCurrentAmount of AsyncReplyChannel<float>
-
 // User-input trading strategy parameters
 type TradingStrategyParameters =
     { TrackedCurrencies: int
@@ -37,6 +32,7 @@ type TradingStrategyMessage =
     | GetParams of AsyncReplyChannel<TradingStrategyParameters>
     | Activate
     | Deactivate
+    | GetStatus of AsyncReplyChannel<bool>
 
 // The Event discriminated union type is not currently used in this module; however, it will likely
 // be helpful for linking the bounded contexts together in future milestones.
@@ -130,6 +126,8 @@ let tradingStrategyAgent =
                     return! loop currParams activated
                 | Activate -> return! loop currParams true
                 | Deactivate -> return! loop currParams false
+                | GetStatus replyChannel ->
+                    replyChannel.Reply(activated)
             }
 
         loop initTradingParams false // The new trading strategy should be deactivated until
@@ -265,8 +263,6 @@ let stopTrading =
     OK "Trading strategy deactivated"
     )
 
-// TODO: check whether we want to conflate starting/stopping trading
-// with activating/deactivating trading strategy
 let app =
     POST >=> choose
         [ path "/tradingstrategy" >=> newTradingStrategy
