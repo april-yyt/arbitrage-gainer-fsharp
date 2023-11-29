@@ -88,53 +88,78 @@ let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list =
 let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     // Initiate buy or sell order based on exchange and order type
     async {
-        match orderDetails.Exchange with
-        | "Bitfinex" -> 
-            let orderType = match orderDetails.OrderType with
-                            | Buy -> "buy"
-                            | Sell -> "sell"
-            await BitfinexAPI.submitOrder orderType orderDetails.Currency (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
-                | Some response -> Result.Ok (response.Id) 
-                | None -> Result.Error "Failed to submit order to Bitfinex")
-        | "Kraken" -> 
-            let orderType = match orderDetails.OrderType with
-                            | Buy -> "buy"
-                            | Sell -> "sell"
-            await KrakenAPI.submitOrder orderDetails.Currency orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
-                | Some response -> Result.Ok (response.Id) 
-                | None -> Result.Error "Failed to submit order to Kraken")
-        | "Bitstamp" -> 
-            let action = match orderDetails.OrderType with
-                         | Buy -> BitstampAPI.buyMarketOrder
-                         | Sell -> BitstampAPI.sellMarketOrder
-            await action orderDetails.Currency (orderDetails.Quantity.ToString()) None |> Async.map (function
-                | Some response -> Result.Ok (response.Id) 
-                | None -> Result.Error "Failed to submit order to Bitstamp")
-        | _ -> 
-            async.Return (Result.Error "Unsupported exchange")
+        try 
+            match orderDetails.Exchange with
+            | "Bitfinex" -> 
+                let orderType = match orderDetails.OrderType with
+                                | Buy -> "buy"
+                                | Sell -> "sell"
+                await BitfinexAPI.submitOrder orderType orderDetails.Currency (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                    | Some response -> Result.Ok (response.Id) 
+                    | None -> Result.Error "Failed to submit order to Bitfinex")
+            | "Kraken" -> 
+                let orderType = match orderDetails.OrderType with
+                                | Buy -> "buy"
+                                | Sell -> "sell"
+                await KrakenAPI.submitOrder orderDetails.Currency orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                    | Some response -> Result.Ok (response.Id) 
+                    | None -> Result.Error "Failed to submit order to Kraken")
+            | "Bitstamp" -> 
+                let action = match orderDetails.OrderType with
+                            | Buy -> BitstampAPI.buyMarketOrder
+                            | Sell -> BitstampAPI.sellMarketOrder
+                await action orderDetails.Currency (orderDetails.Quantity.ToString()) None |> Async.map (function
+                    | Some response -> Result.Ok (response.Id) 
+                    | None -> Result.Error "Failed to submit order to Bitstamp")
+            | _ -> 
+                async.Return (Result.Error "Unsupported exchange")
+        with
+        | ex -> 
+            return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
 
-let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: OrderID) : Async<bool> = 
+let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : Async<Result<bool, string>> = 
     async {
-        let orderEntity = new OrderEntity()
-        orderEntity.PartitionKey <- orderDetails.Exchange 
-        orderEntity.RowKey <- Guid.NewGuid().ToString()
-        orderEntity.OrderID <- orderEntity.RowKey 
-        orderEntity.Currency <- orderDetails.Currency
-        orderEntity.Price <- orderDetails.Price
-        orderEntity.OrderType <- match orderDetails.OrderType with Buy -> "Buy" | Sell -> "Sell"
-        orderEntity.Quantity <- orderDetails.Quantity
-        orderEntity.Exchange <- orderDetails.Exchange
+        try
+            let orderEntity = new OrderEntity()
+            orderEntity.PartitionKey <- orderDetails.Exchange 
+            orderEntity.RowKey <- Guid.NewGuid().ToString()
+            orderEntity.OrderID <- orderID
+            orderEntity.Currency <- orderDetails.Currency
+            orderEntity.Price <- float orderDetails.Price
+            orderEntity.OrderType <- match orderDetails.OrderType with Buy -> "Buy" | Sell -> "Sell"
+            orderEntity.Quantity <- orderDetails.Quantity
+            orderEntity.Exchange <- orderDetails.Exchange
 
-        // functions in DatabaseOperations      
-        return addOrderToDatabase orderEntity
+            let result = addOrderToDatabase orderEntity
+            if result then
+                return Result.Ok true
+            else
+                return Result.Error "Failed to add order to database"
+        with
+        | ex -> 
+            return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
-
 
 // Helper functions for Trade Execution Workflow
 let executeTrade (orderDetails: OrderDetails) : bool = true
 let updateOrderStatusToExecuted (orderId: OrderID) : bool = true
+
+let executeTrade (orderDetails: OrderDetails) : Result<bool, string> =
+    try
+        // logic for executing trade
+        Result.Ok true
+    with
+    | ex -> Result.Error (sprintf "An exception occurred while executing trade: %s" ex.Message)
+
+let updateOrderStatusToExecuted (orderId: OrderID) : Result<bool, string> =
+    try
+        // logic for updating order status
+        Result.Ok true
+    with
+    | ex -> Result.Error (sprintf "An exception occurred while updating order status: %s" ex.Message)
+
 
 // Helper functions for Order Fulfillment Workflow
 let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails = Filled 
@@ -170,15 +195,16 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderInitialize
         let! result = initiateBuySellOrderAsync orderDetails
         match result with
         | Result.Ok orderID ->
-            let! recorded = recordOrderInDatabaseAsync orderDetails orderID
-            match recorded with
-            | true -> 
+            let! dbResult = recordOrderInDatabaseAsync orderDetails orderID
+            match dbResult with
+            | Result.Ok _ -> 
                 return Result.Ok { OrderID = orderID; OrderDetails = orderDetails }
-            | false -> 
-                return Result.Error "Failed to record order in database"
+            | Result.Error errMsg ->
+                return Result.Error errMsg
         | Result.Error errMsg ->
             return Result.Error errMsg
     }
+
 
 let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, string> =
     ordersEmitted
@@ -253,22 +279,3 @@ let pushOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateRece
         | true -> Some { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
         | false -> None // Update wasn't pushed
     | false -> None // Connection to exchanges failed
-
-// Workflow: Handle Order Errors
-let handleOrderError (orderError: OrderProcessingError) : ErrorHandledConfirmation option =
-    match detectError orderError with
-    | true ->
-        match handleError orderError with
-        | true -> Some { OrderID = orderError.OrderID; CorrectiveAction = "Action Taken" }
-        | false -> None // Error not handled
-    | false -> None // Error not detected
-
-// Workflow: Database Operations
-let databaseOperations (dbRequest: DatabaseOperationRequest) : DatabaseOperationConfirmation option =
-    match connectToDatabase () with
-    | true ->
-        match performDatabaseOperation dbRequest with
-        | true -> Some { OperationType = dbRequest.OperationType; Result = "Success" }
-        | false -> None // Operation failed
-    | false -> None // Connection to database failed
-  
