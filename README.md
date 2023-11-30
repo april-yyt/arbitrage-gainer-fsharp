@@ -1,4 +1,4 @@
-# Arbitrage Gainer Milestone II
+# Arbitrage Gainer Milestone III
 
 **Team 6:** Sahana Rangarajan (ssrangar), April Yang (yutongya), Audrey Zhou (yutongz7)
 
@@ -26,6 +26,15 @@ The trading strategy is a bounded context representing a **core subdomain**. It 
 - `reactivateUponNewDay` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L223)): a strategy that was deactivated due to reaching the maximal daily volume should be reactivated when the daily volume is reset
 
 Note that there are also two "helper workflows", `processNewTransactionVolume` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L150)) and `processNewTransactionAmount` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L156)). These functions' purpose is to link this bounded context to the order management bounded context by translating the events between both of them. This will be improved for the next milestone when we fully integrate the bounded contexts.
+
+### Side Effects
+- **User input**: 
+  - `startTrading` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L269)): The user can start trading with the `/tradingstart` REST API endpoint.
+  - `stopTrading` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L274)): The user can stop trading with the `/tradingstop` REST API endpoint.
+  - `newTradingStrategy` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L225)): The user can input new trading strategy parameters through the `/tradingstrategy` REST API endpoint.
+
+### Error Handling
+- Here, the error handling primarily occurs in ensuring whether the trading strategy parameters provided by the user are valid. If invalid or missing inputs are found, then an error response is returned instead of the 200 success; see [code](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L244) for reference. 
 
 ## Arbitrage Opportunity
 
@@ -99,10 +108,19 @@ We have classified the following functionalities in our system as domain service
 ### Crosstraded Cryptocurrencies
 
 - `updateCrossTradedCryptos` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L93)): retrieve cross-traded cryptocurrencies
-- `uploadCryptoPairsToDB` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L113)): note that this workflow will be implemented fully in the next milestone, as it represents a side effect.
-
+- `uploadCryptoPairsToDB` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L141)): note that this workflow will be implemented fully in the next milestone, as it represents a side effect.
+- **Side Effects**:
+  - `crossTradedCryptos` [link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L153): A user-accessible REST API endpoint, `/crosstradedcryptos`, was added to retrieve updated cross traded currencies
+  - The workflow `uploadCryptoPairsToDB` (now found [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L141)) now uploads database results to an Azure Storage table.
+  - The input currency lists for each exchange are loaded in from external txt files; see `validCurrencyPairsFromFile`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L85)).
+- **Error Handling**:
+  - Railway-oriented error handling was added in checking the new input files starting at `validCurrencyPairsFromFile` and propagating into the REST API endpoint when cross traded currencies are updated (see [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L156)). The properties checked are whether the files exist (`validateFileExistence` [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L71)) and whether the file is the proper type (`validateFileType` [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L77)).
+  - The database operation's response is checked for errors in the [endpoint](https://github.com/yutongyaF2023/arbitragegainer/blob/main/CrossTradedCryptos.fs#L162).
 ### Historical Spread Calculation
 
-- `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets. Loading the historical data file (third-party integration) and persisting the resulting arbitrage opportunities in a database (side-effect) will both be implemented in the next milestone(s).
+- `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets.
+- **Side Effects**:
+  - The historical value file is now loaded in with JSON type handlers
+- **Error Handling**:
 
 
