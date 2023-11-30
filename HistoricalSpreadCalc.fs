@@ -13,11 +13,6 @@ open System
 open Azure
 open Azure.Data.Tables
 
-// TODO: error handling
-// - validate txt file presence
-// - validate data input format
-// - database operation error returns
-
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
