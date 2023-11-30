@@ -120,7 +120,13 @@ We have classified the following functionalities in our system as domain service
 
 - `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets.
 - **Side Effects**:
-  - The historical value file is now loaded in with JSON type handlers
+  - The historical value file is now loaded in with JSON type providers; see the `HistoricalValues` [type](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L51) and `loadHistoricalValuesFile` [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L95).
+  - This calculation can be invoked by the REST API endpoint `/historicalspread` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L95)).
+  - The results are persisted in a database; see `persistOpportunitiesInDB` [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L163).
 - **Error Handling**:
+  - We validate that the historicalData.txt file exists [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L175)
+  - We validate that the JSON type provider has all the fields we require [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L72)
+  - We handle DB errors [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L185)
+  - See the REST API endpoint to see the errors propagate into failures.
 
 
