@@ -5,7 +5,12 @@ open Suave.Sockets.Control
 open Suave.WebSocket
 open OrderManagement
 open TradingStrategy
+open System.Net.Http
+open Newtonsoft.Json
+open DatabaseOperations
+open DatabaseSchema
 
+let wsUrl = "wss://socket.polygon.io/crypto"
 let apiKey = "qC2Ix1WnmcpTMRP2TqQ8hVZsxihJq7Hq";
 let private httpClient = new HttpClient()
 
@@ -67,6 +72,39 @@ type QuoteMessage =
     | UpdateData of Quote
     | RetrieveLatestData of AsyncReplyChannel<Quote list>
 
+type ServiceInfo = {
+    Name: string
+}
+type RemoteServiceError = {
+    Service: ServiceInfo
+    Exception: System.Exception
+}
+type AssessArbitrageOpportunityError = 
+    | RemoteService of RemoteServiceError
+
+type Result<'Success, 'Failure> = 
+    | Ok of 'Success
+    | Error of 'Failure
+
+let bind inputFn twoTrackInput = 
+    match twoTrackInput with
+    | Ok success -> inputFn success
+    | Error failure -> Error failure
+
+let bindAsync inputFn twoTrackInput = 
+    let! res = twoTrackInput
+    match res with
+    | Ok success -> return! inputFn success
+    | Error failure -> Error failure
+
+let map inputFn res = 
+    match res with
+    | Ok success -> Ok (inputFn success)
+    | Error failure -> Error failure
+
+let strategy = tradingStrategyAgent.PostAndReply(GetParams)
+let currentDailyVolume = volumeAgent.PostAndReply(CheckCurrentVolume)
+
 // ------
 // Agents: each agent stores a list consisting of the latest Quote for each currency pair
 // ------
@@ -120,6 +158,11 @@ let krakenAgent =
             }
         loop [])
 
+// --------------------------
+// DB Configuration Constants
+// --------------------------
+let table = tableClient.GetTableClient "HistoricalArbitrageOpportunities"
+
 // ----------
 // Workflows
 // ----------
@@ -128,32 +171,65 @@ let krakenAgent =
 
 // Helper that fetches crypto pairs
 let fetchCryptoPairsFromDB = 
-// TODO: db operation
-   |> List.fold (fun acc pair -> acc + ",XQ." + pair) ""
+    let numOfTrackedCurrencies = strategy.TrackedCurrencies
+    table.Query<ArbitrageOpEntry> ()
+    |> Seq.cast<ArbitrageOpEntry>
+    |> Seq.sortByDescending (fun arbitrageOp -> arbitrageOp.NumberOpportunities)
+    |> Seq.take numOfTrackedCurrencies
+    |> Seq.fold (fun acc pair -> acc + ",XQ." + pair) ""
+
+// Helper that authenticates Polygon
+let authenticatePolygon = 
+    async {
+        try 
+            let authPayload = {
+                action = "auth",
+                params = apiKey,
+            }
+            let authJson = JsonConvert.SerializeObject(authPayload)
+            let authContent = new StringContent(authJson, Encoding.UTF8, "application/json")
+            let! res = httpClient.PostAsync(wsUrl, authContent) |> Async.AwaitTask
+            return Ok res
+        with
+        | ex -> 
+            return Error "Authentication Error"
+    }
+
+// Helper that connects to Polygon websocket
+let connectWebSocket = 
+    async {
+        try
+            let ws = new ClientWebSocket()
+            let! res = ws.ConnectAsync(wsUrl, CancellationToken.None) |> Async.AwaitTask
+            return Ok res
+        with 
+        | ex -> 
+            return Error "WebSocket Connection Error"
+    }
+
+// Helper that makes subscription request to Polygon
+let subscribeData = 
+    async {
+        try
+            let cryptoPairs = fetchCryptoPairsFromDB
+            let subscribePayload = {action = "subscribe", params = cryptoPairs};
+            let subscribeJson = JsonConvert.SerializeObject(subscribePayload)
+            let subscribeContent = new StringContent(subscribeJson, Encoding.UTF8, "application/json")
+            let! res = httpClient.PostAsync(wsUrl, subscribeContent) |> Async.AwaitTask
+            return Ok res
+        with
+        | ex -> 
+            return Error "Subscription Error"
+    }
 
 // Subscribe to real time data via Polygon
 let subscribeToRealTimeDataFeed (input: TradingStrategyActivated) = 
     async {
-        // connect to Polygon and authenticate
-        let url = "wss://socket.polygon.io/crypto"
-        let authPayload = {
-            action = "auth",
-            params = apiKey,
-        }
-        let authJson = JsonConvert.SerializeObject(authPayload)
-        let authContent = new StringContent(authJson, Encoding.UTF8, "application/json")
-        do! httpClient.PostAsync(url, authContent) |> Async.AwaitTask
-
-        // connect to websocket
-        let ws = new ClientWebSocket()
-        do! ws.ConnectAsync(url, CancellationToken.None) |> Async.AwaitTask
-
-        // subscribe
-        let! cryptoPairs = fetchCryptoPairsFromDB
-        let subscribePayload = {action = "subscribe", params = cryptoPairs};
-        let subscribeJson = JsonConvert.SerializeObject(authPayload)
-        let subscribeContent = new StringContent(authJson, Encoding.UTF8, "application/json")
-        do! httpClient.PostAsync(url, subscribeContent) |> Async.AwaitTask
+        let! res = 
+            authenticatePolygon
+            |> bindAsync connectWebSocket
+            |> bindAsync subscribeData
+        return res
     }
 
 // Workflow: Pause trading when trading strategy is deactivated
@@ -168,24 +244,27 @@ let unsubscribeRealTimeDataFeed (ws: ClientWebSocket) =
 // Helper that parses JSON array received from Polygon to a quote list
 let parseJsonArray (res: string) : Quote list =
     let unprocessedQuotes = JsonConvert.DeserializeObject<UnprocessedQuote[]>(res) |> Array.toList
-    List.map (fun quote -> {
-        Exchange = getExchangeFromQuote quote
-        CurrencyPair = {
-            Currency1 = quote.CurrencyPair.[0..2]
-            Currency2 = quote.CurrencyPair.[3..5]
-        };
-        BidPrice = quote.BidPrice;
-        AskPrice = quote.AskPrice;                          
-        BidSize = quote.BidSize;
-        AskSize = quote.AskSize;
-        Time = quote.Time;
-    }) unprocessedQuotes
+    unprocessedQuotes 
+        |> List.filter (fun quote -> quote.Exchange == 2 || quote.Exchange == 6 || quote.Exchange == 23)
+        |> List.map (fun quote -> {
+                Exchange = getExchangeFromQuote quote
+                CurrencyPair = {
+                    Currency1 = quote.CurrencyPair.[0..2]
+                    Currency2 = quote.CurrencyPair.[3..5]
+                };
+                BidPrice = quote.BidPrice;
+                AskPrice = quote.AskPrice;                          
+                BidSize = quote.BidSize;
+                AskSize = quote.AskSize;
+                Time = quote.Time;
+            }) 
+    
 
 // Helper that continuously receives market data from websocket and assess 
 // arbitrage opportunities when trading strategy is activated, 
 let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) = 
     async {
-        let tradingStrategyActivated = tradingStrategyAgent.PostAndReply(RetrieveTradingStrategyStatus)
+        let tradingStrategyActivated = tradingStrategyAgent.PostAndReply(GetStatus)
         match tradingStrategyActivated with
         | true ->
             let buffer = ArraySegment<byte>(Array.zeroCreate 2048)
@@ -200,15 +279,17 @@ let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) =
     }
 
 // Continuously receives market data from websocket and trade
-let retrieveDataFromRealTimeFeedAndTrade (input: QuoteFeedSubscribed) : MarketDataRetrieved = 
+let retrieveDataFromRealTimeFeedAndTrade (input: QuoteFeedSubscribed) = 
     async {
-        do! receiveMsgFromWSAndTrade ws |> Async.AwaitTask
+        try
+            let! = receiveMsgFromWSAndTrade(ws) |> Async.AwaitTask
+            return Ok res
+        with
+        | ex -> 
+            return Error "WebSocket Message Reception Error"
     }
 
 // Workflow: Assess Real Time Arbitrage Opportunity
-
-let strategy = tradingStrategyAgent.PostAndReply(GetParams)
-let currentDailyVolume = volumeAgent.PostAndReply(CheckCurrentVolume)
 
 // Helper that checks whether there is valid price spread
 let minPriceSpreadReached (ask: Quote) (bid: Quote) = 
@@ -216,18 +297,18 @@ let minPriceSpreadReached (ask: Quote) (bid: Quote) =
     priceSpread >= strategy.minPriceSpread
 
 // Helper that returns the correct agent based on quote
-let getAgentFromUnprocessedQuote (data: Quote) = 
+let getAgentFromQuote (data: Quote) = 
     match data.Exchange with
-    | 2 -> bitfinexAgent
-    | 6 -> bitstampAgent
-    | 23 -> krakenAgent
+    | Bitstamp -> bitstampAgent
+    | Bitfinex -> bitfinexAgent
+    | Kraken -> krakenAgent
 
 // Helper that returns the correct exchange based on quote
 let getExchangeFromUnprocessedQuote (data: Quote) = 
     match data.Exchange with
-    | 2 -> "Bitfinex"
-    | 6 -> "Bitstamp"
-    | 23 -> "Kraken"
+    | 2 -> Bitfinex
+    | 6 -> Bitstamp
+    | 23 -> Kraken
 
 // Helper that calculates order volume based on user provided limits
 let calculateWorthwhileTransactionVolume (ask: Quote) (bid: Quote) = 
@@ -264,7 +345,6 @@ let identifyWorthwhileTransactions (ask: Quote) (bid: Quote) =
 
             let bidAgent = getAgentFromQuote bid
             let remainingBidData = {
-                EventType = ask.EventType
                 Exchange = bid.Exchange;
                 CurrencyPair = bid.CurrencyPair;
                 AskPrice = bid.AskPrice;
@@ -272,7 +352,6 @@ let identifyWorthwhileTransactions (ask: Quote) (bid: Quote) =
                 BidPrice = bid.BidPrice;
                 BidSize = bid.BidSize - worthwhileTransactionVolume;
                 Time = bid.Time;
-                ReceiveTime = bid.ReceiveTime
             }
             bidAgent.Post(UpdateData remainingBidData)
 
@@ -315,8 +394,12 @@ let assessRealTimeArbitrageOpportunity (marketDataRetrieved: MarketDataRetrieved
 // Following is a sample code that runs the trading algo, doesn't belong to any workflow
 let sampleRun = 
     async {
-        do! subscribeToRealTimeDataFeed |> Async.AwaitTask
-        do! retrieveDataFromRealTimeFeedAndTrade |> Async.AwaitTask
+        let! realTimeTradingResult = 
+            subscribeToRealTimeDataFeed 
+            |> bindAsync retrieveDataFromRealTimeFeedAndTrade
+            |> Async.AwaitTask
+        match realTimeTradingResult with
+        | Error errorMsg -> printfn "Trading Error: %s" errorMsg
     }
 let main = 
     sampleRun |> Async.RunSynchronously
