@@ -177,14 +177,6 @@ let checkIfNotificationSent (orderId: OrderID) : bool = true
 let connectToExchanges () : bool = true
 let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : bool = true
 
-// Helper functions for Handle Order Error Workflow
-let detectError (error: OrderProcessingError) : bool = true
-let handleError (error: OrderProcessingError) : bool = true
-
-// Helper functions for Database Operations Workflow
-let connectToDatabase () : bool = true
-let performDatabaseOperation (dbRequest: DatabaseOperationRequest) : bool = true
-
 // -------------------------
 // Workflow Implementations
 // -------------------------
