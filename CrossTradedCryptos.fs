@@ -10,6 +10,11 @@ open Suave.Successful
 open Suave.Utils.Collections
 open Suave.RequestErrors
 
+// TODO: error handling
+// - validate txt file presence
+// - validate data input format
+// - database operation error returns
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
@@ -27,12 +32,12 @@ type PairAtExchange = {
 }
 
 // Why the cross-traded cryptos were requested
-type CryptosRequestCause = 
+type CryptosRequestCause =
     | UserInvocation
     | TradingStarted
 
 // Events for the workflows in this domain service
-type CrossTradedCryptosRequested = { 
+type CrossTradedCryptosRequested = {
     InputExchanges: List<string> // Assumption: the input files will be of the format <exchangename>.txt
 }
 
@@ -65,7 +70,7 @@ let validCurrencyPairsFromFile (exchange: string) =
 
 // Input: "Bitfinex", "Bitstamp", "Kraken"
 let pairsTradedAtAllExchanges (exchanges: string list) =
-    let exchangePairs = exchanges 
+    let exchangePairs = exchanges
                         |> List.map(validCurrencyPairsFromFile)
                         |> Seq.concat
     let pairsAtAll = exchangePairs
@@ -98,7 +103,7 @@ let updateCrossTradedCryptos (input: CrossTradedCryptosRequested) =
 // Upload the cross-traded cryptocurrency pairs to the database.
 let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
     // ref: https://learn.microsoft.com/en-us/dotnet/fsharp/using-fsharp-on-azure/table-storage
-    table.CreateIfNotExists () |> ignore 
+    table.CreateIfNotExists () |> ignore
 
     input.UpdatedCrossTradedCryptos
     |> Seq.map createDBEntryFromPair
