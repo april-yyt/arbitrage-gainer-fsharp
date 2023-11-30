@@ -12,6 +12,14 @@
 4. [Domain Services](#domain-services)
    - 4a. [Crosstraded Cryptocurrencies](#crosstraded-cryptocurrencies)
    - 4b. [Historical Spread Calculation](#historical-spread-calculation)
+5. [Side Effects](#side-effects)
+   - 5a. Accept user input
+   - 5b. Retrieval of cross-traded currency pairs
+   - 5c. Historical arbitrage opportunities calculation
+   - 5d. Real-time market data retrieval
+   - 5e. Order management
+   - 5f. Data persistance
+   - 5g. E-mail notifications
 
 ## Trading Strategy
 
@@ -89,3 +97,21 @@ We have classified the following functionalities in our system as domain service
 ### Historical Spread Calculation
 
 - `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets. Loading the historical data file (third-party integration) and persisting the resulting arbitrage opportunities in a database (side-effect) will both be implemented in the next milestone(s).
+
+## Side Effects
+
+### Accept user input
+TODO
+### Retrieval of cross-traded currency pairs
+TODO
+### Historical arbitrage opportunities calculation
+TODO
+### Real-time market data retrieval
+TODO
+### Order management
+TODO
+### Data persistance
+TODO
+### E-mail notifications
+To be completed in Milestone IV
+
