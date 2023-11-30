@@ -2,6 +2,7 @@ module HistoricalSpreadCalculation
 open FSharp.Data.JsonProvider
 
 open ArbitrageOpportunity
+open CrossTradedCryptos
 open Suave
 open Suave.Filters
 open Suave.Operators
@@ -73,25 +74,37 @@ let currencyPairFromStr (pairStr: string) =
         Currency2 = pairStr.[4..6]
     }
 
+let validateHistVal (histVal: HistoricalValues.Root) =
+    let desired = { ev = _; pair = _; bp = _; ap = _; bs = _; as = _; t = _}
+    match histVal with 
+    | desired -> Ok histVal
+    | _ -> Error "The historical value type provider did not have all of the required fields."
+
 /// Creates quote from historical value JSON
 let quoteFromHistVal (histVal: HistoricalValues.Root) : Quote =
-    {
-        Exchange = histVal.ev
-        CurrencyPair = (currencyPairFromStr histVal.pair)
-        BidPrice = histVal.bp
-        AskPrice = histVal.ap
-        BidSize = histVal.bs
-        AskSize = histVal.as // TODO: since "as" is protected, how do we access this element?
-        Time = histVal.t
-    }
+    let res = validateHistVal histVal 
+    match res with
+    | Error failure -> Error failure
+    | _ ->
+        {
+            Exchange = histVal.ev
+            CurrencyPair = (currencyPairFromStr histVal.pair)
+            BidPrice = histVal.bp
+            AskPrice = histVal.ap
+            BidSize = histVal.bs
+            AskSize = histVal.as // Since "as" is protected, how do we access this element?
+            Time = histVal.t
+        }
 
 /// Loads historical values from a file
 let loadHistoricalValuesFile () : list<Quote> =
     // file reading logic
     let loadedValues = HistoricalValues.GetSample()
                         |> Array.map quoteFromHistVal
-    // Format: (CurrencyPair, Exchange, BidPrice, AskPrice)
-    Array.toList loadedValues
+    // Check if any failures occurred
+    match List.Contains loadedValues Error with 
+    | true -> Error "file loading failed" 
+    | _ -> Array.toList loadedValues
 
 let bucketizeQuote (quote: Quote) : int =
     // Convert timestamp to bucket number, assuming quote.Time is in milliseconds
@@ -158,18 +171,25 @@ let persistOpportunitiesInDB ( ops: ArbitrageOpportunitiesIdentified ) =
     ops |> List.map (fun op -> (op.Currency1 + "-" + op.Currency2, op.NumberOfOpportunitiesIdentified))
         |> List.map (fun entry -> TableTransactionAction (TableTransactionActionType.Add, entry))
         |> table.SubmitTransaction
-        |> ignore
 
 // ---------------------------
 // REST API Endpoint Handlers
 // ---------------------------
 let historicalSpread =
     request (fun r ->
-    let ops = calculateHistoricalSpreadWorkflow UserInvocation
-    match ops with
-    | None -> ()
-    | _ -> persistOpportunitiesInDB ops
-    OK "Performed historical spread and uploaded arbitrage opportunities to database."
+    match System.IO.File.Exists "historicalData.txt" with
+    | false -> BAD_REQUEST "Historical data file historicalData.txt not found."
+    | _ ->
+        let twoTrackOps = mapBind calculateHistoricalSpreadWorkflow
+        let ops = twoTrackOps UserInvocation
+        match ops with
+        | Error failure -> BAD_REQUEST failure
+        | None -> ()
+        | _ -> 
+            let dbResp = persistOpportunitiesInDB ops
+            match dbRespContainsError dbResp with
+            | true -> BAD_REQUEST "Error in uploading to database"
+            | _ -> OK "Performed historical spread and uploaded arbitrage opportunities to database."
     )
 
 let app =
