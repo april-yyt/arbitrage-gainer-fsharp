@@ -12,6 +12,11 @@ open System
 open Azure
 open Azure.Data.Tables
 
+// TODO: error handling
+// - validate txt file presence
+// - validate data input format
+// - database operation error returns
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
@@ -37,7 +42,7 @@ type Quote = {
     Exchange: Exchange
     CurrencyPair: CurrencyPair;
     BidPrice: Price;
-    AskPrice: Price;                          
+    AskPrice: Price;
     BidSize: Quantity;
     AskSize: Quantity;
     Time: Time;
@@ -81,7 +86,7 @@ let quoteFromHistVal (histVal: HistoricalValues.Root) : Quote =
     }
 
 /// Loads historical values from a file
-let loadHistoricalValuesFile () : list<Quote> = 
+let loadHistoricalValuesFile () : list<Quote> =
     // file reading logic
     let loadedValues = HistoricalValues.GetSample()
                         |> Array.map quoteFromHistVal
@@ -102,8 +107,8 @@ let regroupQuotesIntoBuckets (quotes: list<Quote>) : list<BucketedQuotes> =
 let selectHighestBidPerExchange (quotes: list<Quote>) : list<Quote> =
     quotes
     |> List.groupBy (fun quote -> quote.Exchange)
-    |> List.collect (fun (_, quotesByExchange) -> 
-        quotesByExchange 
+    |> List.collect (fun (_, quotesByExchange) ->
+        quotesByExchange
         |> List.maxBy (fun quote -> quote.BidPrice)
         |> List.singleton)
 
@@ -113,7 +118,7 @@ let identifyArbitrageOpportunities (quotes: list<Quote>) : list<ArbitrageOpportu
     combinations
     |> List.choose (fun (quote1, quote2) ->
         match (quote1.CurrencyPair = quote2.CurrencyPair, quote1.Exchange <> quote2.Exchange) with
-        | (true, true) -> 
+        | (true, true) ->
             let priceDifference = abs (quote1.BidPrice - quote2.AskPrice)
             match priceDifference > 0.01m with
             | true -> Some { Currency1 = fst quote1.CurrencyPair; Currency2 = snd quote1.CurrencyPair; NumberOfOpportunitiesIdentified = 1 }
@@ -134,13 +139,13 @@ let table = tableClient.GetTableClient "HistoricalArbitrageOpportunities"
 let calculateHistoricalSpreadWorkflow (request: HistoricalSpreadCalculationRequested) : ArbitrageOpportunitiesIdentified option =
     let historicalValues = loadHistoricalValuesFile ()
     let buckets = regroupQuotesIntoBuckets historicalValues
-    let opportunities = 
-        buckets 
-        |> List.collect (fun bucket -> 
+    let opportunities =
+        buckets
+        |> List.collect (fun bucket ->
             let selectedQuotes = selectHighestBidPerExchange bucket.Quotes
             identifyArbitrageOpportunities selectedQuotes)
         |> List.groupBy (fun op -> (op.Currency1, op.Currency2))
-        |> List.map (fun ((currency1, currency2), ops) -> 
+        |> List.map (fun ((currency1, currency2), ops) ->
             { Currency1 = currency1; Currency2 = currency2; NumberOfOpportunitiesIdentified = List.sumBy (fun op -> op.NumberOfOpportunitiesIdentified) ops })
 
     match opportunities with
