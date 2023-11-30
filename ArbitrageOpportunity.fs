@@ -161,6 +161,8 @@ let krakenAgent =
 // --------------------------
 // DB Configuration Constants
 // --------------------------
+let storageConnString = "AzureStorageConnectionString" // This field will later use the connection string from the Azure console.
+let tableClient = TableServiceClient storageConnString
 let table = tableClient.GetTableClient "HistoricalArbitrageOpportunities"
 
 // ----------
