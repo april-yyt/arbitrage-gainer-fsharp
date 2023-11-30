@@ -33,8 +33,12 @@ The ArbitrageOpportunity is a bounded context representing a **core subdomain**.
 - `subscribeToRealTimeDataFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L101)): Subcribing to real-time data
   feed for top N currency pairs.
 
+  - **Contains error handling when external service (Polygon) throws exception**
+
 - `retrieveDataFromRealTimeFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L106)): Upon receiving real-time
   data, process the data and starting trading
+
+  - **Contains error handling when external service (WebSocket) throws exception**
 
 - `assessRealTimeArbitrageOpportunity` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L115)): Based on user provided
   trading strategy, identify arbitrage opportunities and emit orders correspondingly
