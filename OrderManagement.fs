@@ -118,7 +118,7 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-
+// Helper function for Database Operations
 let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : Async<Result<bool, string>> = 
     async {
         try
@@ -142,36 +142,6 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-// Helper functions for Trade Execution Workflow
-let executeTrade (orderDetails: OrderDetails) : bool = true
-let updateOrderStatusToExecuted (orderId: OrderID) : bool = true
-
-let executeTrade (orderDetails: OrderDetails) : Result<bool, string> =
-    try
-        // logic for executing trade
-        Result.Ok true
-    with
-    | ex -> Result.Error (sprintf "An exception occurred while executing trade: %s" ex.Message)
-
-let updateOrderStatusToExecuted (orderId: OrderID) : Result<bool, string> =
-    try
-        // logic for updating order status
-        Result.Ok true
-    with
-    | ex -> Result.Error (sprintf "An exception occurred while updating order status: %s" ex.Message)
-
-
-// Helper functions for Order Fulfillment Workflow
-let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails = Filled 
-let updateTransactionTotals (orderId: OrderID, fulfillmentDetails: FulfillmentDetails) : bool = true
-let userNotification (orderId: OrderID, message: string) : bool = true
-
-// Helper functions for Update Transaction Totals Workflow
-let createOrderWithRemainingAmount (orderId: OrderID) : bool = true
-
-// Helper functions for User Notification Workflow
-let sendEmailToUser (orderId: OrderID) : bool = true
-let checkIfNotificationSent (orderId: OrderID) : bool = true
 
 // Helper functions for Push Order Update Workflow
 let connectToExchanges (exchange: string) : Async<Result<unit, string>> = 
@@ -200,6 +170,21 @@ let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : Async<Res
             return Result.Error "Unsupported exchange"
     }
 
+
+// Helper functions for Trade Execution Workflow
+
+// Helper functions for Order Fulfillment Workflow
+let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails = Filled 
+let updateTransactionTotals (orderId: OrderID, fulfillmentDetails: FulfillmentDetails) : bool = true
+let userNotification (orderId: OrderID, message: string) : bool = true
+
+// Helper functions for Update Transaction Totals Workflow
+let createOrderWithRemainingAmount (orderId: OrderID) : bool = true
+
+// Helper functions for User Notification Workflow
+let sendEmailToUser (orderId: OrderID) : bool = true
+let checkIfNotificationSent (orderId: OrderID) : bool = true
+
 // -------------------------
 // Workflow Implementations
 // -------------------------
@@ -219,7 +204,6 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderInitialize
         | Result.Error errMsg ->
             return Result.Error errMsg
     }
-
 
 let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, string> =
     ordersEmitted
