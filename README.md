@@ -12,6 +12,7 @@
 4. [Domain Services](#domain-services)
    - 4a. [Crosstraded Cryptocurrencies](#crosstraded-cryptocurrencies)
    - 4b. [Historical Spread Calculation](#historical-spread-calculation)
+   
 
 ## Trading Strategy
 
@@ -33,14 +34,32 @@ The ArbitrageOpportunity is a bounded context representing a **core subdomain**.
 - `subscribeToRealTimeDataFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L101)): Subcribing to real-time data
   feed for top N currency pairs.
 
+  - **Contains error handling when external service (Polygon) throws exception**
+
 - `retrieveDataFromRealTimeFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L106)): Upon receiving real-time
   data, process the data and starting trading
+
+  - **Contains error handling when external service (WebSocket) throws exception**
 
 - `assessRealTimeArbitrageOpportunity` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L115)): Based on user provided
   trading strategy, identify arbitrage opportunities and emit orders correspondingly
 
 - `unsubscribeRealTimeDataFeed` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L207)): When trading strategy is
   deactivated, pause trading and unsubscribe from real-time data feed
+
+### Side Effects
+
+Each workflow listed above includes error handling to manage potential failures and ensure the system's robustness. The following side effect areas have been identified: 
+
+- **Database Operations**:
+   - `fetchCryptoPairsFromDB`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L164-L181))
+- **API Calls to Polygon for Real Time Data Retrieval**:
+   - `authenticatePolygon`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L184))
+   - `connectWebSocket`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L201))
+   - `subscribeData`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L213))
+   - `subscribeToRealTimeDataFeed`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L228))
+   - `unsubscribeRealTimeDataFeed`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L238))
+   - `receiveMsgFromWSAndTrade`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L267-L292))
 
 ## Order Management
 
@@ -85,3 +104,5 @@ We have classified the following functionalities in our system as domain service
 ### Historical Spread Calculation
 
 - `calculateHistoricalSpreadWorkflow` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L77)): performs the historical spread calculation — the historical value file's quotes are separated into 5ms buckets, and arbitrage opportunities are identified from these buckets. Loading the historical data file (third-party integration) and persisting the resulting arbitrage opportunities in a database (side-effect) will both be implemented in the next milestone(s).
+
+
