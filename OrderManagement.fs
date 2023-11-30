@@ -174,8 +174,31 @@ let sendEmailToUser (orderId: OrderID) : bool = true
 let checkIfNotificationSent (orderId: OrderID) : bool = true
 
 // Helper functions for Push Order Update Workflow
-let connectToExchanges () : bool = true
-let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : bool = true
+let connectToExchanges (exchange: string) : Async<Result<unit, string>> = 
+    async {
+        try
+            match exchange with
+            | "Bitfinex" | "Kraken" | "Bitstamp" -> return Result.Ok ()
+            | _ -> return Result.Error "Unsupported exchange"
+        with
+        | ex -> return Result.Error (sprintf "An exception occurred: %s" ex.Message)
+    }
+
+let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : Async<Result<unit, string>> =
+    async {
+        match orderUpdateEvent.OrderDetails.Exchange with
+        | "Bitfinex" -> 
+            let! result = BitfinexAPI.retrieveOrderTrades orderUpdateEvent.OrderDetails.Currency orderUpdateEvent.OrderID
+            return result |> Option.map (fun _ -> Result.Ok ()) |> Option.defaultValue (Result.Error "Failed to retrieve trades from Bitfinex")
+        | "Kraken" -> 
+            let! result = KrakenAPI.queryOrderInformation (int64 orderUpdateEvent.OrderID)
+            return result |> Option.map (fun _ -> Result.Ok ()) |> Option.defaultValue (Result.Error "Failed to query order information from Kraken")
+        | "Bitstamp" -> 
+            let! result = BitstampAPI.orderStatus (orderUpdateEvent.OrderID.ToString())
+            return result |> Option.map (fun _ -> Result.Ok ()) |> Option.defaultValue (Result.Error "Failed to check order status on Bitstamp")
+        | _ -> 
+            return Result.Error "Unsupported exchange"
+    }
 
 // -------------------------
 // Workflow Implementations
@@ -214,6 +237,22 @@ let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, s
     |> function
         | Result.Ok initList -> Result.Ok (List.rev initList)
         | Result.Error errMsg -> Result.Error errMsg
+
+// Workflow: Push Order Update
+let pushOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
+    async {
+        let! connectResult = connectToExchanges orderUpdateEvent.OrderDetails.Exchange
+        match connectResult with
+        | Result.Ok () ->
+            let! pushResult = pushOrderUpdateFromExchange orderUpdateEvent
+            match pushResult with
+            | Result.Ok () ->
+                return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
+            | Result.Error errMsg -> 
+                return Result.Error errMsg
+        | Result.Error errMsg -> 
+            return Result.Error errMsg
+    }
 
 // Workflow: Trade Execution
 let tradeExecution (orderInitialized: OrderInitialized) : TradeExecutionConfirmation option =
@@ -263,11 +302,3 @@ let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSent
         | false -> None // Notification not sent
     | false -> None // Email sending failed
 
-// Workflow: Push Order Update
-let pushOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateReceived option =
-    match connectToExchanges () with
-    | true ->
-        match pushOrderUpdateFromExchange orderUpdateEvent with
-        | true -> Some { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
-        | false -> None // Update wasn't pushed
-    | false -> None // Connection to exchanges failed
