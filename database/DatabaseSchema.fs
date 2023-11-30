@@ -11,3 +11,4 @@ type OrderEntity() =
     member val OrderType: string = null with get, set
     member val Quantity: int = 0 with get, set
     member val Exchange: string = null with get, set
+    member val Status: string = null with get, set
