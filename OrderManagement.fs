@@ -194,7 +194,6 @@ let processBitstampResponse (response: JsonValue) : Result<bool, string> =
     | _ -> Result.Error "Invalid response format"
 
 
-
 // -------------------------
 // Workflow Implementations
 // -------------------------
@@ -339,4 +338,3 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event li
             ) (Result.Ok [])
         return events
     }
-
