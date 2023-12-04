@@ -75,7 +75,7 @@ Each workflow listed above includes error handling to manage potential failures 
 
 The OrderManagement a bounded context representing a **generic subdomain**. The workflows within this bounded context can all be found within [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs):
 
-### Basic Functionalities
+### General Functionalities
 
 - `createOrderAsync` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L202)): Processes each order by capturing details, initiating buy/sell orders, and recording them in the database, ultimately generating a list of `OrderInitialize` events.
 
@@ -129,6 +129,22 @@ Each workflow listed above includes error handling to manage potential failures 
 - `deleteOrderFromDatabase` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/database/DatabaseOperations.fs#L21)) : Removes an order entity from the database, ensuring that any errors are caught and handled appropriately.
 
 In each of these modules, functions are designed to manage side effects—such as making HTTP requests or database operations—and include error handling to ensure the robustness of the system. The error handling strategies involve catching exceptions, validating API responses, and ensuring that any failures do not disrupt the overall workflow and are logged for further analysis.
+- `databaseOperations` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L189)): Handles database interactions, crucial for maintaining persistent data and state of the trading operations.
+
+### Side Effects and Error Handling
+
+Each workflow listed above includes error handling to manage potential failures and ensure the system's robustness. The following side effect areas have been identified and error-handled:
+
+1. **API Calls to External Services**: `initiateBuySellOrderAsync`
+2. **Database Operations**: `recordOrderInDatabaseAsync`
+3. **Trade Execution**: `tradeExecution`
+4. **Order Fulfillment**: `orderFulfillment`
+5. **User Notifications**: `userNotification`
+6. **Order Update Broadcast**: `pushOrderUpdate`
+7. **Error Detection and Management**: `handleOrderError`
+
+
+
 
 ## Domain Services
 
