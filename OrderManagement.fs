@@ -50,22 +50,19 @@ type Event =
 
 // Helper Function for submitting a new order on an exchange
 let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
-    // Initiate buy or sell order based on exchange and order type
     async {
         try 
             match orderDetails.Exchange with
             | "Bitfinex" -> 
-                let orderType = match orderDetails.OrderType with
-                                | Buy -> "buy"
-                                | Sell -> "sell"
-                await BitfinexAPI.submitOrder orderType orderDetails.Currency (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                let orderType = "MARKET" // Always MARKET for mock API
+                let symbol = "t" + orderDetails.Currency // Correct symbol format
+                await BitfinexAPI.submitOrder orderType symbol (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
                     | Some response -> Result.Ok (response.Id) 
                     | None -> Result.Error "Failed to submit order to Bitfinex")
             | "Kraken" -> 
-                let orderType = match orderDetails.OrderType with
-                                | Buy -> "buy"
-                                | Sell -> "sell"
-                await KrakenAPI.submitOrder orderDetails.Currency orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
+                let orderType = "market" // Always market for mock API
+                let pair = "XX" + orderDetails.Currency // Adjusted for mock API
+                await KrakenAPI.submitOrder pair orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
                     | Some response -> Result.Ok (response.Id) 
                     | None -> Result.Error "Failed to submit order to Kraken")
             | "Bitstamp" -> 
