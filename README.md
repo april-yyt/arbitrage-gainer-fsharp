@@ -39,6 +39,8 @@ deactivated, pause trading and unsubscribe from real-time data feed
 ## Order Management
 The OrderManagement a bounded context representing a **generic subdomain**. The workflows within this bounded context can all be found within [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs):
 
+### General Functionalities
+
 - `createOrders` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L111)): Processes each order by capturing details, initiating buy/sell orders, and recording them in the database, ultimately generating an `OrderCreationConfirmation`.
 
 - `tradeExecution` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L123)): Manages the execution of trades and updates order statuses.
@@ -52,6 +54,19 @@ The OrderManagement a bounded context representing a **generic subdomain**. The 
 - `handleOrderError` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L180)): Handles errors that occur during order processing. It involves detecting errors, performing corrective actions, and confirming error handling, thereby ensuring the robustness and reliability of the order management system.
 
 - `databaseOperations` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L189)): Handles database interactions, crucial for maintaining persistent data and state of the trading operations.
+
+### Side Effects and Error Handling
+
+Each workflow listed above includes error handling to manage potential failures and ensure the system's robustness. The following side effect areas have been identified and error-handled:
+
+1. **API Calls to External Services**: `initiateBuySellOrderAsync`
+2. **Database Operations**: `recordOrderInDatabaseAsync`
+3. **Trade Execution**: `tradeExecution`
+4. **Order Fulfillment**: `orderFulfillment`
+5. **User Notifications**: `userNotification`
+6. **Order Update Broadcast**: `pushOrderUpdate`
+7. **Error Detection and Management**: `handleOrderError`
+
 
 
 
