@@ -106,26 +106,25 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
 // Helper function for retrieving the order status updates from the exchange
 let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
     async {
-        // Step 1: Wait for a delay before retrieving order status
         do! Task.Delay(30000) |> Async.AwaitTask
-
-        // Step 2: Retrieve order status from the respective exchange
         let result = 
             match orderUpdateEvent.OrderDetails.Exchange with
-            | "Bitfinex" -> await BitfinexAPI.retrieveOrderTrades orderUpdateEvent.OrderDetails.Currency orderUpdateEvent.OrderID
-            | "Kraken" -> await KrakenAPI.queryOrderInformation (int64 orderUpdateEvent.OrderID)
-            | "Bitstamp" -> await BitstampAPI.orderStatus (orderUpdateEvent.OrderID.ToString())
-            | _ -> return Result.Error "Unsupported exchange"
+            | "Bitfinex" -> 
+                await BitfinexAPI.retrieveOrderTrades (sprintf "t%s" orderUpdateEvent.OrderDetails.Currency) orderUpdateEvent.OrderID
+            | "Kraken" -> 
+                await KrakenAPI.queryOrdersInfo (sprintf "%d" orderUpdateEvent.OrderID) true None
+            | "Bitstamp" -> 
+                await BitstampAPI.orderStatus (sprintf "%d" orderUpdateEvent.OrderID)
+            | _ -> 
+                return Result.Error "Unsupported exchange"
 
-        // Step 3: Process the result
         match result with
         | Some status ->
-            // Additional processing based on the order status, including database updates and user notifications
-            // ...
             return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
         | None -> 
             return Result.Error "Failed to retrieve order status"
     }
+
 
 // Helper function to parse Bitfinex response and store in database
 let processBitfinexResponse (response: JsonValue) : Result<bool, string> =
