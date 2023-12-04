@@ -3,16 +3,16 @@ module OrderManagement
 open BitfinexAPI
 open BitstampAPI
 open KrakenAPI
-open System.Net.Http
-open Newtonsoft.Json
 open DatabaseOperations
 open DatabaseSchema
+open System
+open System.Threading.Tasks
 
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
 
-// Common Types
+// Type definitions
 type Currency = string
 type Price = float
 type OrderType = Buy | Sell
@@ -21,7 +21,6 @@ type Exchange = string
 type OrderID = int
 type TradeID = int
 
-// Order Details Type
 type OrderDetails = {
     Currency: Currency
     Price: Price
@@ -30,61 +29,26 @@ type OrderDetails = {
     Exchange: Exchange
 }
 
-// Event Types for Various Workflows
-type OrderEmitted = OrderDetails list
-type OrderInitialized = { OrderID: OrderID; OrderDetails: OrderDetails }
-
-type TradeExecutionConfirmation = { OrderID: OrderID; TradeID: TradeID }
-
-type FulfillmentDetails = | Filled | PartiallyFilled | OnlyOneSideFilled | NotFilled
-type TradeExecuted = { OrderID: OrderID; OrderDetails: OrderDetails }
-type OrderFulfillmentStatus = { OrderID: OrderID; FulfillmentDetails: FulfillmentDetails }
-
-type UpdateTransactionVolume = { OrderID: OrderID; TransactionVolume: float }
-type UpdateTransactionAmount = { OrderID: OrderID; TransactionAmount: float }
-type OrderFulfillmentAction = | UpdateTransactionTotals of UpdateTransactionVolume * UpdateTransactionAmount | OrderOneSideFilled
-
-type OrderOneSideFilled = { OrderID: OrderID; FulfillmentDetails: FulfillmentDetails }
-type NotificationSentConfirmation = OrderID
-
 type OrderUpdateEvent = { OrderID: OrderID; OrderDetails: OrderDetails }
 type OrderStatusUpdateReceived = { OrderID: OrderID; ExchangeName: string }
 
-type OrderProcessingError = { OrderID: OrderID; ErrorDetails: string }
-type ErrorHandledConfirmation = { OrderID: OrderID; CorrectiveAction: string }
-
-type DatabaseOperationRequest = { OperationType: string; Data: string }
-type DatabaseOperationConfirmation = { OperationType: string; Result: string }
 
 // Main Event Type
 type Event =
-    | OrderCreated of OrderID
-    | TradeExecuted of TradeID option
+    | OrderCreated of OrderInitialized
+    | OrderUpdateProcessed of OrderStatusUpdateReceived
     | OrderFulfillmentUpdated of FulfillmentStatus
-    | TransactionTotalsUpdated of string option
-    | UserNotificationSent of int option
-    | OrderUpdatePushed of (OrderID * string) option
-    | OrderErrorHandled of (OrderID * string) option
-    | OrderOneSideFilled of OrderOneSideFilled
-    | ErrorHandledConfirmation of ErrorHandledConfirmation
-    | DatabaseOperationConfirmation of DatabaseOperationConfirmation
-    | OrderStatusUpdateReceived of OrderStatusUpdateReceived
-    | None
+    | TransactionTotalsUpdated of UpdateTransactionVolume * UpdateTransactionAmount
+    | UserNotificationSent of NotificationSentConfirmation
+    | OrderErrorHandled of OrderProcessingError
+    | DatabaseOperationCompleted of DatabaseOperationConfirmation
+    | OtherEvent
 
 // -------------------------
 // Helper Function Definitions
 // -------------------------
 
-open System
-
-let generateOrderID () = Guid.NewGuid().ToString()
-let generateTradeID () = Guid.NewGuid().ToString()
-
-// Helper functions for Create Order Workflow
-let captureOrderDetails (orderEmitted: OrderEmitted) : OrderDetails list = 
-    // Capture order details from the emitted event
-    orderEmitted
-
+// Helper Function for submitting a new order on an exchange
 let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     // Initiate buy or sell order based on exchange and order type
     async {
@@ -118,7 +82,7 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-
+// Helper function for Database Operations
 let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : Async<Result<bool, string>> = 
     async {
         try
@@ -142,48 +106,93 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-// Helper functions for Trade Execution Workflow
-let executeTrade (orderDetails: OrderDetails) : bool = true
-let updateOrderStatusToExecuted (orderId: OrderID) : bool = true
+// Helper function for retrieving the order status updates from the exchange
+let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
+    async {
+        // Step 1: Wait for a delay before retrieving order status
+        do! Task.Delay(30000) |> Async.AwaitTask
 
-let executeTrade (orderDetails: OrderDetails) : Result<bool, string> =
-    try
-        // logic for executing trade
-        Result.Ok true
-    with
-    | ex -> Result.Error (sprintf "An exception occurred while executing trade: %s" ex.Message)
+        // Step 2: Retrieve order status from the respective exchange
+        let result = 
+            match orderUpdateEvent.OrderDetails.Exchange with
+            | "Bitfinex" -> await BitfinexAPI.retrieveOrderTrades orderUpdateEvent.OrderDetails.Currency orderUpdateEvent.OrderID
+            | "Kraken" -> await KrakenAPI.queryOrderInformation (int64 orderUpdateEvent.OrderID)
+            | "Bitstamp" -> await BitstampAPI.orderStatus (orderUpdateEvent.OrderID.ToString())
+            | _ -> return Result.Error "Unsupported exchange"
 
-let updateOrderStatusToExecuted (orderId: OrderID) : Result<bool, string> =
-    try
-        // logic for updating order status
-        Result.Ok true
-    with
-    | ex -> Result.Error (sprintf "An exception occurred while updating order status: %s" ex.Message)
+        // Step 3: Process the result
+        match result with
+        | Some status ->
+            // Additional processing based on the order status, including database updates and user notifications
+            // ...
+            return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
+        | None -> 
+            return Result.Error "Failed to retrieve order status"
+    }
 
+// Helper function to parse Bitfinex response and store in database
+let processBitfinexResponse (response: JsonValue) : Result<bool, string> =
+    match response with
+    | JsonArray trades ->
+        trades
+        |> List.fold (fun acc trade ->
+            match trade with
+            | JsonArray [| JsonNumber id; JsonString symbol; JsonNumber mts; JsonNumber order_id; JsonNumber exec_amount; JsonNumber exec_price; _ |] ->
+                let orderEntity = 
+                    { new OrderEntity() with
+                        OrderID = order_id.ToString()
+                        Currency = symbol
+                        Price = exec_price
+                        // Status = logic for judging the order status
+                    }
+                acc && updateOrderInDatabase orderEntity
+            | _ -> false
+        ) true
+        |> function
+            | true -> Result.Ok true
+            | false -> Result.Error "Failed to process Bitfinex response"
+    | _ -> Result.Error "Invalid response format"
 
-// Helper functions for Order Fulfillment Workflow
-let checkOrderFulfillment (orderDetails: OrderDetails) : FulfillmentDetails = Filled 
-let updateTransactionTotals (orderId: OrderID, fulfillmentDetails: FulfillmentDetails) : bool = true
-let userNotification (orderId: OrderID, message: string) : bool = true
+// Helper function to parse Kraken response and store in database
+let processKrakenResponse (response: JsonValue) : Result<bool, string> =
+    match response?result with
+    | JsonObject orders ->
+        orders
+        |> Seq.fold (fun acc (_, orderDetails) ->
+            match orderDetails with
+            | JsonObject order ->
+                let orderEntity =
+                    { new OrderEntity() with
+                        OrderID = order?descr?order |> string
+                        Currency = order?descr?pair |> string
+                        Price = order?price |> float
+                        // Status = logic for judging the order status
+                    }
+                acc && updateOrderInDatabase orderEntity
+            | _ -> false
+        ) true
+        |> function
+            | true -> Result.Ok true
+            | false -> Result.Error "Failed to process Kraken response"
+    | _ -> Result.Error "Invalid response format"
 
-// Helper functions for Update Transaction Totals Workflow
-let createOrderWithRemainingAmount (orderId: OrderID) : bool = true
+// Helper function to parse Bitstamp response and store in database
+let processBitstampResponse (response: JsonValue) : Result<bool, string> =
+    match response with
+    | JsonObject order ->
+        let orderEntity =
+            { new OrderEntity() with
+                OrderID = order?id |> string
+                Currency = order?market |> string
+                Price = order?transactions |> Seq.head |> fun t -> t?price |> float
+                // Status = logic for judging the order status
+            }
+        updateOrderInDatabase orderEntity
+        |> function
+            | true -> Result.Ok true
+            | false -> Result.Error "Failed to process Bitstamp response"
+    | _ -> Result.Error "Invalid response format"
 
-// Helper functions for User Notification Workflow
-let sendEmailToUser (orderId: OrderID) : bool = true
-let checkIfNotificationSent (orderId: OrderID) : bool = true
-
-// Helper functions for Push Order Update Workflow
-let connectToExchanges () : bool = true
-let pushOrderUpdateFromExchange (orderUpdateEvent: OrderUpdateEvent) : bool = true
-
-// Helper functions for Handle Order Error Workflow
-let detectError (error: OrderProcessingError) : bool = true
-let handleError (error: OrderProcessingError) : bool = true
-
-// Helper functions for Database Operations Workflow
-let connectToDatabase () : bool = true
-let performDatabaseOperation (dbRequest: DatabaseOperationRequest) : bool = true
 
 // -------------------------
 // Workflow Implementations
@@ -205,7 +214,6 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderInitialize
             return Result.Error errMsg
     }
 
-
 let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, string> =
     ordersEmitted
     |> List.map createOrderAsync
@@ -223,46 +231,75 @@ let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, s
         | Result.Ok initList -> Result.Ok (List.rev initList)
         | Result.Error errMsg -> Result.Error errMsg
 
-// Workflow: Trade Execution
-let tradeExecution (orderInitialized: OrderInitialized) : TradeExecutionConfirmation option =
-    match executeTrade orderInitialized.OrderDetails with
-    | true ->
-        match updateOrderStatusToExecuted orderInitialized.OrderID with
-        | true -> Some { OrderID = orderInitialized.OrderID; TradeID = generateTradeID () }
-        | false -> None // Error in updating order status
-    | false -> None // Error in executing trade
+// Workflow: Retrieve and handle Order Updates
+let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<Result<Event, string>> =
+    async {
+        // Wait for 30 seconds to get the order status updates
+        do! Task.Delay(30000) |> Async.AwaitTask
 
-// Workflow: Order Fulfillment
-let orderFulfillment (tradeExecuted: TradeExecuted) : OrderFulfillmentStatus =
-    let fulfillmentDetails = checkOrderFulfillment tradeExecuted.OrderDetails
-    match updateTransactionTotals (tradeExecuted.OrderID, fulfillmentDetails) with
-    | true ->
-        match userNotification (tradeExecuted.OrderID, "Your order fulfillment status has been updated.") with
-        | true -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = fulfillmentDetails }
-        | false -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = NotFilled } // Error in user notification
-    | false -> { OrderID = tradeExecuted.OrderID; FulfillmentDetails = NotFilled } // Error in updating transaction totals
+        // Retrieve and process the order status
+        let! processingResult = 
+            match orderDetails.Exchange with
+            | "Bitfinex" -> await BitfinexAPI.retrieveOrderTrades orderDetails.Currency orderID
+                            |> Async.map processBitfinexResponse
+            | "Kraken" -> await KrakenAPI.queryOrderInformation (int64 orderID)
+                          |> Async.map processKrakenResponse
+            | "Bitstamp" -> await BitstampAPI.orderStatus (orderID.ToString())
+                            |> Async.map processBitstampResponse
+            | _ -> async.Return (Result.Error "Unsupported exchange")
 
-// Workflow: Update Transaction Totals
-let updateTransactionTotals (orderFulfillmentStatus: OrderFulfillmentStatus) : OrderFulfillmentAction option =
-    match orderFulfillmentStatus.FulfillmentDetails with
-    | Filled ->
-        let updateVolume = { OrderID = orderFulfillmentStatus.OrderID; TransactionVolume = 100.0 } // Placeholder values
-        let updateAmount = { OrderID = orderFulfillmentStatus.OrderID; TransactionAmount = 1000.0 } // Placeholder values
-        Some (UpdateTransactionTotals (updateVolume, updateAmount))
+        match processingResult with
+        // 1. For fully fulfilled orders, store the transaction history in the database
+        | Result.Ok (FullyFulfilled transactionHistory) ->
+            let updatedEntity = 
+                { new OrderEntity() with
+                    OrderID = orderID.ToString()
+                    // Set other properties as needed
+                }
+            match updateOrderInDatabase updatedEntity with
+            | true -> return Result.Ok (OrderFulfillmentUpdated Filled)
+            | false -> return Result.Error "Failed to update order in database"
+        // 2. For partially fulfilled orders, issue a new order and update the database
+        | Result.Ok (PartiallyFulfilled remainingAmount) ->
+                let remainingAmount = // Calculate the remaining amount
+                let newOrderDetails = 
+                    { orderDetails with Quantity = remainingAmount }
+                // Issue a new order
+                let! newOrderResult = initiateBuySellOrderAsync newOrderDetails
+                match newOrderResult with
+                | Result.Ok newOrderID ->
+                    // Update the database
+                    let updatedEntity = 
+                        { new OrderEntity() with
+                            OrderID = orderID.ToString()
+                            // other properties 
+                        }
+                    match updateOrderInDatabase updatedEntity with
+                    | true -> return Result.Ok (OrderFulfillmentUpdated PartiallyFilled)
+                    | false -> return Result.Error "Failed to update order in database"
+                | Result.Error errMsg ->
+                    return Result.Error errMsg
+        // 3. For orders with only one side filled, notify the user and update the database
+        | Result.Ok (OneSideFilled transactionHistory) ->
+            match userNotification { OrderID = orderID; FulfillmentDetails = OnlyOneSideFilled } with
+            | Some _ -> return Result.Ok (UserNotificationSent orderID)
+            | None -> return Result.Error "Failed to send user notification"
+            let updatedEntity = 
+                { new OrderEntity() with
+                    OrderID = orderID.ToString()
+                    // Set other properties as needed
+                }
+            match updateOrderInDatabase updatedEntity with
+            | true -> return Result.Ok (OrderFulfillmentUpdated OneSideFilled)
+            | false -> return Result.Error "Failed to update order in database"
+        | Result.Error errMsg -> 
+            return Result.Error errMsg
+        | _ -> 
+            return Result.Error "Failed to retrieve order status"
+    }
 
-    | PartiallyFilled ->
-        let _ = createOrderWithRemainingAmount orderFulfillmentStatus.OrderID
-        let updateVolume = { OrderID = orderFulfillmentStatus.OrderID; TransactionVolume = 50.0 } // Placeholder values
-        let updateAmount = { OrderID = orderFulfillmentStatus.OrderID; TransactionAmount = 500.0 } // Placeholder values
-        Some (UpdateTransactionTotals (updateVolume, updateAmount))
 
-    | OnlyOneSideFilled ->
-        Some (OrderOneSideFilled) // sends an OrderOneSideFilled event
-
-    | NotFilled ->
-        None // No action required for NotFilled status
-
-// Workflow: User Notification When Only One Side of the Order is Filled
+// Workflow: User Notification When Only One Side of the Order is Filled, to be in more details during Milestone IV.
 let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
     match sendEmailToUser orderOneSideFilled.OrderID with
     | true -> 
@@ -271,11 +308,33 @@ let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSent
         | false -> None // Notification not sent
     | false -> None // Email sending failed
 
-// Workflow: Push Order Update
-let pushOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : OrderStatusUpdateReceived option =
-    match connectToExchanges () with
-    | true ->
-        match pushOrderUpdateFromExchange orderUpdateEvent with
-        | true -> Some { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
-        | false -> None // Update wasn't pushed
-    | false -> None // Connection to exchanges failed
+
+// Main Workflow of Order Management: to create and process orders
+let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event list, string>> =
+    async {
+        let results = 
+            ordersEmitted 
+            |> List.map (fun orderDetails ->
+                async {
+                    let! createResult = createOrderAsync orderDetails
+                    match createResult with
+                    | Result.Ok orderInitialized ->
+                        let! updateResult = processOrderUpdate orderInitialized.OrderID orderDetails
+                        return updateResult
+                    | Result.Error errMsg ->
+                        return Result.Error errMsg
+                }
+            )
+            |> Async.Parallel
+
+        // Aggregate results into a single list of events
+        let events = 
+            results 
+            |> Array.fold (fun acc result ->
+                match acc, result with
+                | Result.Ok eventsList, Result.Ok event -> Result.Ok (event :: eventsList)
+                | Result.Error errMsg, _ | _, Result.Error errMsg -> Result.Error errMsg
+                | Result.Ok _, Result.Ok _ -> acc
+            ) (Result.Ok [])
+        return events
+    }

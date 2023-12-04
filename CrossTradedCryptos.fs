@@ -13,6 +13,10 @@ open Suave.RequestErrors
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
+// Type def for error handling
+type Result<'Success,'Failure> =
+| Ok of 'Success
+| Error of 'Failure
 
 // TODO (M4): duplicate code with HistoricalSpreadCalculation; remove after integration with historical spread domain service
 type CurrencyPair = {
@@ -27,12 +31,12 @@ type PairAtExchange = {
 }
 
 // Why the cross-traded cryptos were requested
-type CryptosRequestCause = 
+type CryptosRequestCause =
     | UserInvocation
     | TradingStarted
 
 // Events for the workflows in this domain service
-type CrossTradedCryptosRequested = { 
+type CrossTradedCryptosRequested = {
     InputExchanges: List<string> // Assumption: the input files will be of the format <exchangename>.txt
 }
 
@@ -54,28 +58,66 @@ type CryptoDBEntry (pair: string) =
 // -------
 // Helpers
 // -------
+let bind inputFunction twoTrackInput =
+    match twoTrackInput with
+    | Ok success -> inputFunction success
+    | Error failure -> Error failure
+
+let mapBind (inputFunction: 'a -> 'b) twoTrackInput =
+    match twoTrackInput with
+    | Ok success -> Ok (inputFunction success)
+    | Error failure -> Error failure
+
+let validateFileExistence filename: string =
+    match System.IO.File.Exists filename with
+    | true -> Ok filename
+    | false -> Error "File to load (" + filename + ") doesn't exist"
+
+// Currently, since we make the text 
+let validateFileType filename: string =
+    match filename.EndsWith(".txt") with
+    | true -> Ok filename
+    | false -> Error "File is the wrong format; should be a txt file"
+
+let validateInputFile =
+    validateFileExistence >> bind validateFileType
 
 let validCurrencyPairsFromFile (exchange: string) =
-    let pairs = System.IO.File.ReadLines(exchange + ".txt")
-    let filteredPairs = pairs // Read pairs from input file line by line
-                        |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
-                        |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
-                        |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
-    filteredPairs
+    let filename = exchange + ".txt"
+    let res = validateInputFile filename
+    match res with
+    | Error failure -> Error failure
+    | _ ->
+        let pairs = System.IO.File.ReadLines(filename)
+        let filteredPairs = pairs // Read pairs from input file line by line
+                            |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
+                            |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
+                            |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
+        Success filteredPairs
 
 // Input: "Bitfinex", "Bitstamp", "Kraken"
 let pairsTradedAtAllExchanges (exchanges: string list) =
-    let exchangePairs = exchanges 
+    let exchangePairs = exchanges
                         |> List.map(validCurrencyPairsFromFile)
                         |> Seq.concat
-    let pairsAtAll = exchangePairs
-                            |> Seq.countBy (fun x -> x.CurrencyPair) // Count how many exchanges this pair appears in
-                            |> Seq.filter (fun t -> (snd t) = exchanges.Length) // Filter for pairs that appear at all the exchanges
-                            |> Seq.map (fun t -> fst t) // Keep just the currency pairs from the countBy tuples
-    pairsAtAll
+    // Check if any of the validCurrencyPairsFromFile resulted in a failure; if so, return another failure
+    match List.contains exchangePairs Error with 
+    | true -> Error "Pair identification failed"
+    | _ ->
+        let pairsAtAll = exchangePairs
+                                |> Seq.countBy (fun x -> x.CurrencyPair) // Count how many exchanges this pair appears in
+                                |> Seq.filter (fun t -> (snd t) = exchanges.Length) // Filter for pairs that appear at all the exchanges
+                                |> Seq.map (fun t -> fst t) // Keep just the currency pairs from the countBy tuples
+        Success pairsAtAll
 
 let createDBEntryFromPair (pair: CurrencyPair) =
     CryptoDBEntry(pair.Currency1 + "-" + pair.Currency2)
+
+let dbRespContainsError (resp: Response<IReadOnlyList<Response>>) : bool =
+    respList = resp.Value // Extract the readonlylist of responses
+    respList |> Seq.map(fun r -> r.IsError) // Check if each response is an error
+            |> Seq.contains true // Check if any response is an error
+
 
 // --------------------------
 // DB Configuration Constants
@@ -98,21 +140,28 @@ let updateCrossTradedCryptos (input: CrossTradedCryptosRequested) =
 // Upload the cross-traded cryptocurrency pairs to the database.
 let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
     // ref: https://learn.microsoft.com/en-us/dotnet/fsharp/using-fsharp-on-azure/table-storage
-    table.CreateIfNotExists () |> ignore 
+    table.CreateIfNotExists () |> ignore
 
     input.UpdatedCrossTradedCryptos
     |> Seq.map createDBEntryFromPair
     |> Seq.map (fun entry -> TableTransactionAction (TableTransactionActionType.Add, entry))
     |> table.SubmitTransaction
-    |> ignore // Since data is being updated in this step, ignore the return value as per CQS
+
 // ---------------------------
 // REST API Endpoint Handlers
 // ---------------------------
 let crossTradedCryptos =
     request (fun r ->
-    let updatedCryptos = updateCrossTradedCryptos({InputExchanges = ["Bitfinex"; "Bitstamp"; "Kraken"]})
-    uploadCryptoPairsToDB updatedCryptos
-    OK "Uploaded cross-traded currencies to database."
+    input = {InputExchanges = ["Bitfinex"; "Bitstamp"; "Kraken"]}
+    let twoTrackUpdatedCryptos = mapBind updateCrossTradedCryptos
+    let updatedCryptos = twoTrackUpdatedCryptos input
+    match updatedCryptos with 
+    | Error failure -> BAD_REQUEST failure
+    | _ ->
+        let dbResp = uploadCryptoPairsToDB updatedCryptos
+        match dbRespContainsError dbResp with
+        | true -> BAD_REQUEST "Error in uploading to database"
+        | _ -> OK "Uploaded cross-traded currencies to database."
     )
 
 let app =

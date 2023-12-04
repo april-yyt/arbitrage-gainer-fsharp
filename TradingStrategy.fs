@@ -11,6 +11,11 @@ open Suave.RequestErrors
 // Types and Event Definitions
 // ---------------------------
 
+// Type def for error handling
+type Result<'Success,'Failure> =
+| Ok of 'Success
+| Error of 'Failure
+
 // Message type used for the volume update agent
 type VolumeMessage =
     | UpdateVolume of float
@@ -183,7 +188,7 @@ let acceptNewTradingStrategy (input: TradingParametersInputed) =
     newStrat
 
 // Activating an accepted trading strategy, as needed
-let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) : TradingStrategyActivated = 
+let activateAcceptedTradingStrategy (input: TradingStrategyAccepted) : TradingStrategyActivated =
     tradingStrategyAgent.Post(Activate)
     { ActivatedStrategy = input.AcceptedStrategy}
 
@@ -206,7 +211,7 @@ let reactivateUponNewDay (input: NewDayBegan): TradingStrategyActivated option =
     match input.PrevDayDeactivated with
     | Some x ->
         match x.Cause with
-        | MaximalDailyTransactionVolumeReached -> 
+        | MaximalDailyTransactionVolumeReached ->
             tradingStrategyAgent.Post(Activate)
             Some { ActivatedStrategy = input.TradingStrategy }
         | _ -> None
@@ -219,39 +224,47 @@ let reactivateUponNewDay (input: NewDayBegan): TradingStrategyActivated option =
 
 let newTradingStrategy =
 // ref: https://theimowski.gitbooks.io/suave-music-store/content/en/query_parameters.html
-// ref: https://www.c-sharpcorner.com/article/routing-in-suave-io-web-development-with-f-sharp/ 
+// ref: https://www.c-sharpcorner.com/article/routing-in-suave-io-web-development-with-f-sharp/
     request (fun r ->
     let trackedCurrencies = match r.queryParam "trackedcurrencies" with
                             | Choice1Of2 tc -> int tc
-                            | _ -> 0 
+                            | _ -> -1
     let minPriceSpread = match r.queryParam "minpricespread" with
                             | Choice1Of2 mps -> float mps
-                            | _ -> 0.0
+                            | _ -> -1.0
     let minTransactionProfit = match r.queryParam "minprofit" with
                                 | Choice1Of2 mp -> float mp
-                                | _ -> 0.0
+                                | _ -> -1.0
     let maxAmountTotal = match r.queryParam "maxamount" with
                             | Choice1Of2 ma -> float ma
-                            | _ -> 0.0
+                            | _ -> -1.0
     let maxDailyVol = match r.queryParam "maxdailyvol" with
                         | Choice1Of2 mdv -> float mdv
-                        | _ -> 0.0
-    let newStrat = {
-        TrackedCurrencies = trackedCurrencies
-        MinPriceSpread = minPriceSpread
-        MinTransactionProfit = minTransactionProfit
-        MaxAmountTotal = maxAmountTotal
-        MaxDailyVolume = maxDailyVol
-    }
-    tradingStrategyAgent.Post(UpdateStrategy {
-        TrackedCurrencies = trackedCurrencies
-        MinPriceSpread = minPriceSpread
-        MinTransactionProfit = minTransactionProfit
-        MaxAmountTotal = maxAmountTotal
-        MaxDailyVolume = maxDailyVol
-    })
-    OK (sprintf "New trading strategy inputed: %A" newStrat)
-    )
+                        | _ -> -1.0
+    // Invalid/absent query parameters are marked as negative values
+    match (trackedCurrencies < 0 ||
+            minPriceSpread < 0.0 ||
+            minTransactionProfit < 0.0 ||
+            maxAmountTotal < 0.0 ||
+            maxDailyVol < 0.0) with
+            | true ->  BAD_REQUEST "Invalid parameter(s) supplied."
+            | _ ->
+                let newStrat = {
+                    TrackedCurrencies = trackedCurrencies
+                    MinPriceSpread = minPriceSpread
+                    MinTransactionProfit = minTransactionProfit
+                    MaxAmountTotal = maxAmountTotal
+                    MaxDailyVolume = maxDailyVol
+                }
+                tradingStrategyAgent.Post(UpdateStrategy {
+                    TrackedCurrencies = trackedCurrencies
+                    MinPriceSpread = minPriceSpread
+                    MinTransactionProfit = minTransactionProfit
+                    MaxAmountTotal = maxAmountTotal
+                    MaxDailyVolume = maxDailyVol
+                })
+                OK (sprintf "New trading strategy inputed: %A" newStrat)
+                )
 
 let startTrading =
     request (fun r ->
