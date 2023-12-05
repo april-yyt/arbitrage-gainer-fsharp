@@ -125,7 +125,6 @@ let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<Order
             return Result.Error "Failed to retrieve order status"
     }
 
-
 // Helper function to parse Bitfinex response and store in database
 let processBitfinexResponse (response: JsonValue) : Result<bool, string> =
     match response with
@@ -188,7 +187,6 @@ let processBitstampResponse (response: JsonValue) : Result<bool, string> =
             | true -> Result.Ok true
             | false -> Result.Error "Failed to process Bitstamp response"
     | _ -> Result.Error "Invalid response format"
-
 
 // -------------------------
 // Workflow Implementations
@@ -294,7 +292,6 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             return Result.Error "Failed to retrieve order status"
     }
 
-
 // Workflow: User Notification When Only One Side of the Order is Filled, to be in more details during Milestone IV.
 let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
     match sendEmailToUser orderOneSideFilled.OrderID with
@@ -303,7 +300,6 @@ let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSent
         | true -> Some orderOneSideFilled.OrderID
         | false -> None // Notification not sent
     | false -> None // Email sending failed
-
 
 // Main Workflow of Order Management: to create and process orders
 let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event list, string>> =

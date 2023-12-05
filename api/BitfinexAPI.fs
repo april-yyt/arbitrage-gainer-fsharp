@@ -3,32 +3,31 @@ module BitfinexAPI
 open System.Net.Http
 open System.Text
 open Newtonsoft.Json
+open System.Threading.Tasks
 
 let private httpClient = new HttpClient()
 
 let submitOrder (orderType: string) (symbol: string) (amount: string) (price: string) =
     async {
-        let url = "https://18656-testing-server.azurewebsites.net/order/place/v2/auth/w/order/submit" // Updated URL
-        // Adjust the body to match the mock API format
-        let payload = sprintf "{\"type\": \"MARKET\", \"symbol\": \"%s\", \"amount\": \"%s\", \"price\": \"%s\"}" "t" + symbol amount price
+        let url = "https://18656-testing-server.azurewebsites.net/order/place/v2/auth/w/order/submit"
+        let payload = sprintf "{\"type\": \"%s\", \"symbol\": \"t%s\", \"amount\": \"%s\", \"price\": \"%s\"}" orderType symbol amount price
+
         let content = new StringContent(payload, Encoding.UTF8, "application/json")
-        let response = await httpClient.PostAsync(url, content)
-        match response.IsSuccessStatusCode with
-        | true -> 
-            let! responseString = response.Content.ReadAsStringAsync()
-            return JsonConvert.DeserializeObject<_>(responseString) 
-        | false -> 
-            return None 
+        let! response = httpClient.PostAsync(url, content) |> Async.AwaitTask
+        if response.IsSuccessStatusCode then
+            let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+            return Some (JsonConvert.DeserializeObject<_>(responseString))
+        else
+            return None
     }
 
 let retrieveOrderTrades (symbol: string) (orderId: int) =
     async {
-        let url = sprintf "https://18656-testing-server.azurewebsites.net/order/status/auth/r/order/%s:%d/trades" "t" + symbol orderId // Updated URL
-        let response = await httpClient.GetAsync(url) // Changed from PostAsync to GetAsync
-        match response.IsSuccessStatusCode with
-        | true -> 
-            let! responseString = response.Content.ReadAsStringAsync()
-            return JsonConvert.DeserializeObject<_>(responseString)
-        | false -> 
+        let url = sprintf "https://18656-testing-server.azurewebsites.net/order/status/auth/r/order/%st%d/trades" symbol orderId
+        let! response = httpClient.GetAsync(url) |> Async.AwaitTask
+        if response.IsSuccessStatusCode then
+            let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
+            return Some (JsonConvert.DeserializeObject<_>(responseString))
+        else
             return None
     }
