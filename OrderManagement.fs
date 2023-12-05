@@ -103,27 +103,27 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-// Helper function for retrieving the order status updates from the exchange
-let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
-    async {
-        do! Task.Delay(30000) |> Async.AwaitTask
-        let result = 
-            match orderUpdateEvent.OrderDetails.Exchange with
-            | "Bitfinex" -> 
-                await BitfinexAPI.retrieveOrderTrades (sprintf "t%s" orderUpdateEvent.OrderDetails.Currency) orderUpdateEvent.OrderID
-            | "Kraken" -> 
-                await KrakenAPI.queryOrdersInfo (sprintf "%d" orderUpdateEvent.OrderID) true None
-            | "Bitstamp" -> 
-                await BitstampAPI.orderStatus (sprintf "%d" orderUpdateEvent.OrderID)
-            | _ -> 
-                return Result.Error "Unsupported exchange"
+// // Helper function for retrieving the order status updates from the exchange
+// let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
+//     async {
+//         do! Task.Delay(30000) |> Async.AwaitTask
+//         let result = 
+//             match orderUpdateEvent.OrderDetails.Exchange with
+//             | "Bitfinex" -> 
+//                 await BitfinexAPI.retrieveOrderTrades (sprintf "t%s" orderUpdateEvent.OrderDetails.Currency) orderUpdateEvent.OrderID
+//             | "Kraken" -> 
+//                 await KrakenAPI.queryOrdersInfo (sprintf "%d" orderUpdateEvent.OrderID) true None
+//             | "Bitstamp" -> 
+//                 await BitstampAPI.orderStatus (sprintf "%d" orderUpdateEvent.OrderID)
+//             | _ -> 
+//                 return Result.Error "Unsupported exchange"
 
-        match result with
-        | Some status ->
-            return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
-        | None -> 
-            return Result.Error "Failed to retrieve order status"
-    }
+//         match result with
+//         | Some status ->
+//             return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
+//         | None -> 
+//             return Result.Error "Failed to retrieve order status"
+//     }
 
 // Helper function to parse Bitfinex response and store in database
 let processBitfinexResponse (response: JsonValue) : Result<bool, string> =

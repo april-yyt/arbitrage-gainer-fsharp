@@ -68,13 +68,13 @@ let mapBind (inputFunction: 'a -> 'b) twoTrackInput =
     | Ok success -> Ok (inputFunction success)
     | Error failure -> Error failure
 
-let validateFileExistence filename: string =
+let validateFileExistence filename: Result<string, string> =
     match System.IO.File.Exists filename with
     | true -> Ok filename
-    | false -> Error "File to load (" + filename + ") doesn't exist"
+    | false -> Error ("File to load (" + filename + ") doesn't exist")
 
 // Currently, since we make the text 
-let validateFileType filename: string =
+let validateFileType (filename: string): Result<string, string> =
     match filename.EndsWith(".txt") with
     | true -> Ok filename
     | false -> Error "File is the wrong format; should be a txt file"
@@ -84,31 +84,23 @@ let validateInputFile =
 
 let validCurrencyPairsFromFile (exchange: string) =
     let filename = exchange + ".txt"
-    let res = validateInputFile filename
-    match res with
-    | Error failure -> Error failure
-    | _ ->
-        let pairs = System.IO.File.ReadLines(filename)
-        let filteredPairs = pairs // Read pairs from input file line by line
-                            |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
-                            |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
-                            |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
-        Success filteredPairs
+    let pairs = System.IO.File.ReadLines(filename)
+    let filteredPairs = pairs // Read pairs from input file line by line
+                        |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
+                        |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
+                        |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
+    filteredPairs
 
 // Input: "Bitfinex", "Bitstamp", "Kraken"
-let pairsTradedAtAllExchanges (exchanges: string list) =
+let pairsTradedAtAllExchanges (exchanges: string seq) =
     let exchangePairs = exchanges
-                        |> List.map(validCurrencyPairsFromFile)
+                        |> Seq.map(validCurrencyPairsFromFile)
                         |> Seq.concat
-    // Check if any of the validCurrencyPairsFromFile resulted in a failure; if so, return another failure
-    match List.contains exchangePairs Error with 
-    | true -> Error "Pair identification failed"
-    | _ ->
-        let pairsAtAll = exchangePairs
-                                |> Seq.countBy (fun x -> x.CurrencyPair) // Count how many exchanges this pair appears in
-                                |> Seq.filter (fun t -> (snd t) = exchanges.Length) // Filter for pairs that appear at all the exchanges
-                                |> Seq.map (fun t -> fst t) // Keep just the currency pairs from the countBy tuples
-        Success pairsAtAll
+    let pairsAtAll = exchangePairs
+                            |> Seq.countBy (fun x -> x.CurrencyPair) // Count how many exchanges this pair appears in
+                            |> Seq.filter (fun t -> (snd t) = (Seq.length exchanges)) // Filter for pairs that appear at all the exchanges
+                            |> Seq.map (fun t -> fst t) // Keep just the currency pairs from the countBy tuples
+    pairsAtAll
 
 let createDBEntryFromPair (pair: CurrencyPair) =
     CryptoDBEntry(pair.Currency1 + "-" + pair.Currency2)
