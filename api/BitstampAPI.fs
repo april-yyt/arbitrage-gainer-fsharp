@@ -8,21 +8,31 @@ open System.Diagnostics
 
 let private httpClient = new HttpClient(BaseAddress = Uri("https://18656-testing-server.azurewebsites.net"))
 
+let parseJsonResponse (json: string) =
+    try
+        let parsedObj = JsonConvert.DeserializeObject<System.Collections.Generic.Dictionary<string, string>>(json)
+        match parsedObj.TryGetValue("id") with
+        | true, id -> Some id
+        | _ -> None
+    with
+    | _ -> None
+
+
 let postRequest (url: string) (data: (string * string) list) =
     async {
+        // let content = new FormUrlEncodedContent(data)
         let content = new FormUrlEncodedContent(data |> Seq.map (fun (k, v) -> new System.Collections.Generic.KeyValuePair<string, string>(k, v)))
 
-        let! response = Async.AwaitTask (httpClient.PostAsync(url, content)) 
+        let! response = Async.AwaitTask (httpClient.PostAsync(url, content)) // Fixed line
         match response.IsSuccessStatusCode with
         | true -> 
-            let! responseString = Async.AwaitTask (response.Content.ReadAsStringAsync()) 
+            let! responseString = Async.AwaitTask (response.Content.ReadAsStringAsync())
             Debug.WriteLine($"Response JSON: {responseString}")
-            return Some(responseString)
+            return parseJsonResponse(responseString)
         | false -> 
             Debug.WriteLine($"Error: {response.StatusCode}")
             return None
     }
-
 
 let buyMarketOrder (marketSymbol: string) (amount: string) (clientOrderId: Option<string>) =
     let url = sprintf "/order/place/api/v2/buy/market/%s/" (marketSymbol.ToLower())
