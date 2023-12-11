@@ -1,6 +1,7 @@
 module CrossTradedCryptos
 
 open System
+open System.Collections.Generic
 open Azure
 open Azure.Data.Tables
 open Suave
@@ -37,7 +38,7 @@ type CryptosRequestCause =
 
 // Events for the workflows in this domain service
 type CrossTradedCryptosRequested = {
-    InputExchanges: List<string> // Assumption: the input files will be of the format <exchangename>.txt
+    InputExchanges: string seq // Assumption: the input files will be of the format <exchangename>.txt
 }
 
 type CrossTradedCryptosUpdated = { UpdatedCrossTradedCryptos: CurrencyPair seq}
@@ -63,7 +64,7 @@ let bind inputFunction twoTrackInput =
     | Ok success -> inputFunction success
     | Error failure -> Error failure
 
-let mapBind (inputFunction: 'a -> 'b) twoTrackInput =
+let railwayMap (inputFunction: 'a -> 'b) twoTrackInput =
     match twoTrackInput with
     | Ok success -> Ok (inputFunction success)
     | Error failure -> Error failure
@@ -82,9 +83,25 @@ let validateFileType (filename: string): Result<string, string> =
 let validateInputFile =
     validateFileExistence >> bind validateFileType
 
+let validateInputFiles (filenames: string seq) =
+    let containsError = 
+            filenames |> Seq.map(validateInputFile)
+              |> Seq.exists(fun r -> match r with // Check if the validation resulted in any error
+                                        | Error failure -> true
+                                        | _ -> false)
+    match containsError with
+        | true -> Error "Input files validation failed."
+        | false -> Ok { InputExchanges = filenames }
+    
+let exchangeToFilename (exchange: string) =
+    exchange + ".txt"
+
+let validateInputExchanges (exchanges: string seq) = 
+    exchanges |> Seq.map exchangeToFilename
+                |> validateInputFiles
+
 let validCurrencyPairsFromFile (exchange: string) =
-    let filename = exchange + ".txt"
-    let pairs = System.IO.File.ReadLines(filename)
+    let pairs = System.IO.File.ReadLines(exchangeToFilename exchange)
     let filteredPairs = pairs // Read pairs from input file line by line
                         |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
                         |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
@@ -106,7 +123,7 @@ let createDBEntryFromPair (pair: CurrencyPair) =
     CryptoDBEntry(pair.Currency1 + "-" + pair.Currency2)
 
 let dbRespContainsError (resp: Response<IReadOnlyList<Response>>) : bool =
-    respList = resp.Value // Extract the readonlylist of responses
+    let respList = resp.Value // Extract the readonlylist of responses
     respList |> Seq.map(fun r -> r.IsError) // Check if each response is an error
             |> Seq.contains true // Check if any response is an error
 
@@ -144,13 +161,13 @@ let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
 // ---------------------------
 let crossTradedCryptos =
     request (fun r ->
-    input = {InputExchanges = ["Bitfinex"; "Bitstamp"; "Kraken"]}
-    let twoTrackUpdatedCryptos = mapBind updateCrossTradedCryptos
-    let updatedCryptos = twoTrackUpdatedCryptos input
+    let input = {InputExchanges = ["Bitfinex"; "Bitstamp"; "Kraken"]}
+    let updatedCryptos = validateInputExchanges input.InputExchanges
+                        |> railwayMap updateCrossTradedCryptos
     match updatedCryptos with 
     | Error failure -> BAD_REQUEST failure
-    | _ ->
-        let dbResp = uploadCryptoPairsToDB updatedCryptos
+    | Ok success ->
+        let dbResp = uploadCryptoPairsToDB success
         match dbRespContainsError dbResp with
         | true -> BAD_REQUEST "Error in uploading to database"
         | _ -> OK "Uploaded cross-traded currencies to database."
