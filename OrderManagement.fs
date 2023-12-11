@@ -61,7 +61,6 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
                 | Some (response: BitfinexResponse) -> 
                     match response with
                     | head :: _ -> return Result.Ok (IntOrderID head.id)
-                    
                     | [] -> return Result.Error "Empty Bitfinex response"
                 | None -> return Result.Error "Failed to submit order to Bitfinex"
             | "Kraken" -> 
@@ -138,66 +137,50 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
 //     }
 
 // Helper function to parse Bitfinex response and store in database
-let processBitfinexResponse (response: JsonValue) : Result<bool, string> =
+let processBitfinexResponse (response: JsonValue) : Result<Event, string> =
     match response with
     | JsonArray trades ->
-        trades
-        |> List.fold (fun acc trade ->
-            match trade with
-            | JsonArray [| JsonNumber id; JsonString symbol; JsonNumber mts; JsonNumber order_id; JsonNumber exec_amount; JsonNumber exec_price; _ |] ->
-                let orderEntity = 
-                    { new OrderEntity() with
-                        OrderID = order_id.ToString()
-                        Currency = symbol
-                        Price = exec_price
-                        // Status = logic for judging the order status
-                    }
-                acc && updateOrderInDatabase orderEntity
-            | _ -> false
-        ) true
-        |> function
-            | true -> Result.Ok true
-            | false -> Result.Error "Failed to process Bitfinex response"
+        if List.isEmpty trades then
+            Result.Ok (OneSideFilled [])
+        else
+            let transactionHistory, totalExecAmount = trades |> List.fold (fun (accHist, accAmt) trade ->
+                match trade with
+                | JsonArray [| JsonNumber id; JsonString symbol; JsonNumber mts; JsonNumber order_id; JsonNumber exec_amount; JsonNumber exec_price; _ |] ->
+                    ({ OrderID = order_id.ToString(); Currency = symbol; Price = exec_price }, exec_amount) :: accHist, accAmt + exec_amount
+                | _ -> accHist, accAmt
+            ) ([], 0.0)
+            if totalExecAmount > 0.0 then
+                Result.Ok (PartiallyFulfilled (transactionHistory, totalExecAmount))
+            else
+                Result.Ok (OneSideFilled transactionHistory)
     | _ -> Result.Error "Invalid response format"
+
 
 // Helper function to parse Kraken response and store in database
 let processKrakenResponse (response: JsonValue) : Result<bool, string> =
     match response?result with
     | JsonObject orders ->
-        orders
-        |> Seq.fold (fun acc (_, orderDetails) ->
+        orders |> Seq.fold (fun acc (_, orderDetails) ->
             match orderDetails with
             | JsonObject order ->
-                let orderEntity =
-                    { new OrderEntity() with
-                        OrderID = order?descr?order |> string
-                        Currency = order?descr?pair |> string
-                        Price = order?price |> float
-                        // Status = logic for judging the order status
-                    }
-                acc && updateOrderInDatabase orderEntity
-            | _ -> false
-        ) true
-        |> function
+                let vol = order?vol |> float
+                let volExec = order?vol_exec |> float
+                let status = if volExec >= vol then FullyFulfilled else if volExec > 0.0 then PartiallyFulfilled else Unfulfilled
+                // existing processing logic here
+            | _ -> acc
+        ) true |> function
             | true -> Result.Ok true
             | false -> Result.Error "Failed to process Kraken response"
     | _ -> Result.Error "Invalid response format"
+
 
 // Helper function to parse Bitstamp response and store in database
 let processBitstampResponse (response: JsonValue) : Result<bool, string> =
     match response with
     | JsonObject order ->
-        let orderEntity =
-            { new OrderEntity() with
-                OrderID = order?id |> string
-                Currency = order?market |> string
-                Price = order?transactions |> Seq.head |> fun t -> t?price |> float
-                // Status = logic for judging the order status
-            }
-        updateOrderInDatabase orderEntity
-        |> function
-            | true -> Result.Ok true
-            | false -> Result.Error "Failed to process Bitstamp response"
+        let amountRemaining = order?amount_remaining |> float
+        let status = if amountRemaining = 0.0 then FullyFulfilled else if amountRemaining < (order?amount |> float) then PartiallyFulfilled else Unfulfilled
+        // existing processing logic here
     | _ -> Result.Error "Invalid response format"
 
 // -------------------------
@@ -220,21 +203,47 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderInitialize
             return Result.Error errMsg
     }
 
-let createOrders (ordersEmitted: OrderEmitted) : Result<OrderInitialized list, string> =
+let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> =
+    async {
+        let! result = initiateBuySellOrderAsync orderDetails
+        match result with
+        | Result.Ok orderID ->
+            // Database operations removed
+            return Result.Ok orderID
+        | Result.Error errMsg ->
+            return Result.Error errMsg
+    }
+
+
+let createOrdersParallel (ordersEmitted: OrderDetails list) : Result<OrderID list, string> =
     ordersEmitted
     |> List.map createOrderAsync
     |> Async.Parallel
     |> Async.RunSynchronously
     |> Array.fold (fun acc result ->
         match acc, result with
-        | Result.Ok initList, Result.Ok orderInit -> 
-            Result.Ok (orderInit :: initList)
+        | Result.Ok idList, Result.Ok orderID -> 
+            Result.Ok (orderID :: idList)
         | Result.Error errMsg, _ | _, Result.Error errMsg ->
             Result.Error errMsg
         | Result.Ok _, Result.Ok _ -> acc
     ) (Result.Ok [])
     |> function
-        | Result.Ok initList -> Result.Ok (List.rev initList)
+        | Result.Ok idList -> Result.Ok (List.rev idList)
+        | Result.Error errMsg -> Result.Error errMsg
+
+let createOrdersSequential (ordersEmitted: OrderDetails list) : Result<OrderID list, string> =
+    ordersEmitted
+    |> List.fold (fun acc orderDetail ->
+        match acc with
+        | Result.Error errMsg -> Result.Error errMsg
+        | Result.Ok idList ->
+            match createOrderAsync orderDetail |> Async.RunSynchronously with
+            | Result.Ok orderID -> Result.Ok (orderID :: idList)
+            | Result.Error errMsg -> Result.Error errMsg
+    ) (Result.Ok [])
+    |> function
+        | Result.Ok idList -> Result.Ok (List.rev idList)
         | Result.Error errMsg -> Result.Error errMsg
 
 // Workflow: Retrieve and handle Order Updates
@@ -255,49 +264,52 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | _ -> async.Return (Result.Error "Unsupported exchange")
 
         match processingResult with
-        // 1. For fully fulfilled orders, store the transaction history in the database
         | Result.Ok (FullyFulfilled transactionHistory) ->
             let updatedEntity = 
-                { new OrderEntity() with
-                    OrderID = orderID.ToString()
-                    // Set other properties as needed
-                }
+                transactionHistory
+                |> List.map (fun t -> 
+                    { new OrderEntity() with
+                        OrderID = t.OrderID
+                        // ... Set other properties as needed ...
+                    })
             match updateOrderInDatabase updatedEntity with
             | true -> return Result.Ok (OrderFulfillmentUpdated Filled)
             | false -> return Result.Error "Failed to update order in database"
-        // 2. For partially fulfilled orders, issue a new order and update the database
-        | Result.Ok (PartiallyFulfilled remainingAmount) ->
-                let remainingAmount = // Calculate the remaining amount
-                let newOrderDetails = 
-                    { orderDetails with Quantity = remainingAmount }
-                // Issue a new order
-                let! newOrderResult = initiateBuySellOrderAsync newOrderDetails
-                match newOrderResult with
-                | Result.Ok newOrderID ->
-                    // Update the database
-                    let updatedEntity = 
+
+        | Result.Ok (PartiallyFulfilled (transactionHistory, remainingAmount)) ->
+            let newOrderDetails = 
+                { orderDetails with Quantity = remainingAmount }
+            let! newOrderResult = initiateBuySellOrderAsync newOrderDetails
+            match newOrderResult with
+            | Result.Ok newOrderID ->
+                let updatedEntity = 
+                    transactionHistory
+                    |> List.map (fun t -> 
                         { new OrderEntity() with
-                            OrderID = orderID.ToString()
-                            // other properties 
-                        }
-                    match updateOrderInDatabase updatedEntity with
-                    | true -> return Result.Ok (OrderFulfillmentUpdated PartiallyFilled)
-                    | false -> return Result.Error "Failed to update order in database"
-                | Result.Error errMsg ->
-                    return Result.Error errMsg
-        // 3. For orders with only one side filled, notify the user and update the database
+                            OrderID = t.OrderID
+                            // ... Set other properties ...
+                        })
+                match updateOrderInDatabase updatedEntity with
+                | true -> return Result.Ok (OrderFulfillmentUpdated PartiallyFilled)
+                | false -> return Result.Error "Failed to update order in database"
+            | Result.Error errMsg ->
+                return Result.Error errMsg
+
         | Result.Ok (OneSideFilled transactionHistory) ->
             match userNotification { OrderID = orderID; FulfillmentDetails = OnlyOneSideFilled } with
             | Some _ -> return Result.Ok (UserNotificationSent orderID)
             | None -> return Result.Error "Failed to send user notification"
             let updatedEntity = 
-                { new OrderEntity() with
-                    OrderID = orderID.ToString()
-                    // Set other properties as needed
-                }
+                transactionHistory
+                |> List.map (fun t -> 
+                    { new OrderEntity() with
+                        OrderID = t.OrderID
+                        // ... Set other properties ...
+                    })
             match updateOrderInDatabase updatedEntity with
             | true -> return Result.Ok (OrderFulfillmentUpdated OneSideFilled)
             | false -> return Result.Error "Failed to update order in database"
+
         | Result.Error errMsg -> 
             return Result.Error errMsg
         | _ -> 
