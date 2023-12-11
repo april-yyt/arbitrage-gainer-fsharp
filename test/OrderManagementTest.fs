@@ -36,7 +36,6 @@ let createRandomOrdersList n =
 
 
 
-
 let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     async {
         try 
@@ -62,25 +61,22 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
                     | txidHead :: _ -> return Result.Ok (StringOrderID txidHead)
                     | [] -> return Result.Error "No transaction ID in Kraken response"
                 | None -> return Result.Error "Failed to submit order to Kraken"
-            // | "Bitstamp" -> 
-            //     let action = match orderDetails.OrderType with
-            //                     | Buy -> BitstampAPI.buyMarketOrder
-            //                     | Sell -> BitstampAPI.sellMarketOrder
-            //     let! responseOption = action orderDetails.Currency (orderDetails.Quantity.ToString()) None
-            //     printfn "Bitstamp response: %A" responseOption
-            //     match responseOption with
-            //     | Some (Some bitstampResponse) -> 
-            //         match bitstampResponse.id with
-            //         | Some id -> return Result.Ok (StringOrderID id)
-            //         | None -> return Result.Error "Bitstamp response id is missing"
-            //     | Some None -> return Result.Error "Failed to parse Bitstamp response"
-            //     | None -> return Result.Error "Failed to submit order to Bitstamp"
+            | "Bitstamp" -> 
+                let action = match orderDetails.OrderType with
+                                | Buy -> BitstampAPI.buyMarketOrder
+                                | Sell -> BitstampAPI.sellMarketOrder
+                let! responseOption = action orderDetails.Currency (orderDetails.Quantity.ToString()) None
+                printfn "Bitstamp response: %A" responseOption
+                match responseOption with
+                | Some id -> return Result.Ok (StringOrderID id)
+                | None -> return Result.Error "Failed to submit order to Bitstamp"
             | _ -> 
                 return Result.Error "Unsupported exchange"
         with
         | ex -> 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
+
 
 
 let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> =

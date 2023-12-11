@@ -54,30 +54,42 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
         try 
             match orderDetails.Exchange with
             | "Bitfinex" -> 
-                let orderType = "MARKET" // Always MARKET for mock API
-                let symbol = "t" + orderDetails.Currency // Correct symbol format
-                await BitfinexAPI.submitOrder orderType symbol (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
-                    | Some response -> Result.Ok (response.Id) 
-                    | None -> Result.Error "Failed to submit order to Bitfinex")
+                let orderType = "MARKET"
+                let symbol = "t" + orderDetails.Currency
+                let! responseOption = BitfinexAPI.submitOrder orderType symbol (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString())
+                match responseOption with
+                | Some (response: BitfinexResponse) -> 
+                    match response with
+                    | head :: _ -> return Result.Ok (IntOrderID head.id)
+                    
+                    | [] -> return Result.Error "Empty Bitfinex response"
+                | None -> return Result.Error "Failed to submit order to Bitfinex"
             | "Kraken" -> 
-                let orderType = "market" // Always market for mock API
-                let pair = "XX" + orderDetails.Currency // Adjusted for mock API
-                await KrakenAPI.submitOrder pair orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.map (function
-                    | Some response -> Result.Ok (response.Id) 
-                    | None -> Result.Error "Failed to submit order to Kraken")
+                let orderType = "market"
+                let pair = "XX" + orderDetails.Currency
+                let! responseOption = KrakenAPI.submitOrder pair orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString())
+                match responseOption with
+                | Some (response: KrakenResponse) -> 
+                    match response.result.txid with
+                    | txidHead :: _ -> return Result.Ok (StringOrderID txidHead)
+                    | [] -> return Result.Error "No transaction ID in Kraken response"
+                | None -> return Result.Error "Failed to submit order to Kraken"
             | "Bitstamp" -> 
                 let action = match orderDetails.OrderType with
-                            | Buy -> BitstampAPI.buyMarketOrder
-                            | Sell -> BitstampAPI.sellMarketOrder
-                await action orderDetails.Currency (orderDetails.Quantity.ToString()) None |> Async.map (function
-                    | Some response -> Result.Ok (response.Id) 
-                    | None -> Result.Error "Failed to submit order to Bitstamp")
+                                | Buy -> BitstampAPI.buyMarketOrder
+                                | Sell -> BitstampAPI.sellMarketOrder
+                let! responseOption = action orderDetails.Currency (orderDetails.Quantity.ToString()) None
+                printfn "Bitstamp response: %A" responseOption
+                match responseOption with
+                | Some id -> return Result.Ok (StringOrderID id)
+                | None -> return Result.Error "Failed to submit order to Bitstamp"
             | _ -> 
-                async.Return (Result.Error "Unsupported exchange")
+                return Result.Error "Unsupported exchange"
         with
         | ex -> 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
+
 
 // Helper function for Database Operations
 let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : Async<Result<bool, string>> = 
