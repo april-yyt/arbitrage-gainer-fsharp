@@ -29,7 +29,7 @@ type OrderDetails = {
     Exchange: Exchange
 }
 
-type OrderUpdateEvent = { OrderID: OrderID; OrderDetails: OrderDetails }
+type OrderUpdate = { OrderID: OrderID; OrderDetails: OrderDetails }
 type OrderStatusUpdateReceived = { OrderID: OrderID; ExchangeName: string }
 
 
@@ -78,7 +78,7 @@ let initiateBuySellOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderI
                                 | Buy -> BitstampAPI.buyMarketOrder
                                 | Sell -> BitstampAPI.sellMarketOrder
                 let! responseOption = action orderDetails.Currency (orderDetails.Quantity.ToString()) None
-                printfn "Bitstamp response: %A" responseOption
+                // printfn "Bitstamp response: %A" responseOption
                 match responseOption with
                 | Some id -> return Result.Ok (StringOrderID id)
                 | None -> return Result.Error "Failed to submit order to Bitstamp"
@@ -114,30 +114,9 @@ let recordOrderInDatabaseAsync (orderDetails: OrderDetails) (orderID: string) : 
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-// // Helper function for retrieving the order status updates from the exchange
-// let processOrderUpdate (orderUpdateEvent: OrderUpdateEvent) : Async<Result<OrderStatusUpdateReceived, string>> =
-//     async {
-//         do! Task.Delay(30000) |> Async.AwaitTask
-//         let result = 
-//             match orderUpdateEvent.OrderDetails.Exchange with
-//             | "Bitfinex" -> 
-//                 await BitfinexAPI.retrieveOrderTrades (sprintf "t%s" orderUpdateEvent.OrderDetails.Currency) orderUpdateEvent.OrderID
-//             | "Kraken" -> 
-//                 await KrakenAPI.queryOrdersInfo (sprintf "%d" orderUpdateEvent.OrderID) true None
-//             | "Bitstamp" -> 
-//                 await BitstampAPI.orderStatus (sprintf "%d" orderUpdateEvent.OrderID)
-//             | _ -> 
-//                 return Result.Error "Unsupported exchange"
-
-//         match result with
-//         | Some status ->
-//             return Result.Ok { OrderID = orderUpdateEvent.OrderID; ExchangeName = orderUpdateEvent.OrderDetails.Exchange }
-//         | None -> 
-//             return Result.Error "Failed to retrieve order status"
-//     }
-
 // Helper function to parse Bitfinex response and store in database
-let processBitfinexResponse (response: JsonValue) : Result<Event, string> =
+let processBitfinexResponse (response: JsonValue) (originalOrderQuantity: float) : Result<Event, string> =
+    // passing in the response and historical order amt to compare and match execution status
     match response with
     | JsonArray trades ->
         if List.isEmpty trades then
@@ -149,8 +128,10 @@ let processBitfinexResponse (response: JsonValue) : Result<Event, string> =
                     ({ OrderID = order_id.ToString(); Currency = symbol; Price = exec_price }, exec_amount) :: accHist, accAmt + exec_amount
                 | _ -> accHist, accAmt
             ) ([], 0.0)
-            if totalExecAmount > 0.0 then
-                Result.Ok (PartiallyFulfilled (transactionHistory, totalExecAmount))
+            if totalExecAmount = originalOrderQuantity then
+                Result.Ok (FullyFulfilled transactionHistory)
+            elif totalExecAmount > 0.0 then
+                Result.Ok (PartiallyFulfilled (transactionHistory, originalOrderQuantity - totalExecAmount))
             else
                 Result.Ok (OneSideFilled transactionHistory)
     | _ -> Result.Error "Invalid response format"
@@ -166,7 +147,7 @@ let processKrakenResponse (response: JsonValue) : Result<bool, string> =
                 let vol = order?vol |> float
                 let volExec = order?vol_exec |> float
                 let status = if volExec >= vol then FullyFulfilled else if volExec > 0.0 then PartiallyFulfilled else Unfulfilled
-                // existing processing logic here
+                // TODO: double check the logic for one side filled orders!
             | _ -> acc
         ) true |> function
             | true -> Result.Ok true
@@ -180,7 +161,7 @@ let processBitstampResponse (response: JsonValue) : Result<bool, string> =
     | JsonObject order ->
         let amountRemaining = order?amount_remaining |> float
         let status = if amountRemaining = 0.0 then FullyFulfilled else if amountRemaining < (order?amount |> float) then PartiallyFulfilled else Unfulfilled
-        // existing processing logic here
+        // TODO: double check the logic for one side filled orders!
     | _ -> Result.Error "Invalid response format"
 
 // -------------------------
@@ -255,16 +236,21 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
         // Retrieve and process the order status
         let! processingResult = 
             match orderDetails.Exchange with
-            | "Bitfinex" -> await BitfinexAPI.retrieveOrderTrades orderDetails.Currency orderID
-                            |> Async.map processBitfinexResponse
-            | "Kraken" -> await KrakenAPI.queryOrderInformation (int64 orderID)
-                          |> Async.map processKrakenResponse
-            | "Bitstamp" -> await BitstampAPI.orderStatus (orderID.ToString())
-                            |> Async.map processBitstampResponse
-            | _ -> async.Return (Result.Error "Unsupported exchange")
+            | "Bitfinex" ->
+                let! bitfinexResponse = BitfinexAPI.retrieveOrderTrades orderDetails.Currency orderID
+                processBitfinexResponse bitfinexResponse orderDetails.Quantity |> Async.Return
+            | "Kraken" ->
+                let! krakenResponse = KrakenAPI.queryOrderInformation (int64 orderID)
+                processKrakenResponse krakenResponse |> Async.Return
+            | "Bitstamp" ->
+                let! bitstampResponse = BitstampAPI.orderStatus (orderID.ToString())
+                processBitstampResponse bitstampResponse |> Async.Return
+            | _ -> 
+                async.Return (Result.Error "Unsupported exchange")
 
         match processingResult with
         | Result.Ok (FullyFulfilled transactionHistory) ->
+            // for fully fulfilled orders, update the status in the database
             let updatedEntity = 
                 transactionHistory
                 |> List.map (fun t -> 
@@ -277,6 +263,9 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | false -> return Result.Error "Failed to update order in database"
 
         | Result.Ok (PartiallyFulfilled (transactionHistory, remainingAmount)) ->
+            // for partiallyFulfilled orders <- judged from returned response
+            // emit one more order with the remaining amount (desired amount – booked amount)
+            // store the realized transactions and the newly emitted order in the database
             let newOrderDetails = 
                 { orderDetails with Quantity = remainingAmount }
             let! newOrderResult = initiateBuySellOrderAsync newOrderDetails
@@ -296,6 +285,8 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
                 return Result.Error errMsg
 
         | Result.Ok (OneSideFilled transactionHistory) ->
+            // notify the user via e-mail 
+            // persist the transaction history in the database -> update the order status as one side filled
             match userNotification { OrderID = orderID; FulfillmentDetails = OnlyOneSideFilled } with
             | Some _ -> return Result.Ok (UserNotificationSent orderID)
             | None -> return Result.Error "Failed to send user notification"

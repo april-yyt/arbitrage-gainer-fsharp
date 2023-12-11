@@ -25,11 +25,11 @@ let submitOrder (pair: string) (orderType: string) (volume: string) (price: stri
             return None
     }
 
-let queryOrdersInfo (transactionIds: string) (includeTrades: bool) (userRef: int option) =
+let queryOrdersInfo (orderID: string) (includeTrades: bool) (userRef: int option) =
     async {
         let url = "https://18656-testing-server.azurewebsites.net/order/status/0/private/QueryOrders"
         let nonceValue = generateNonce()
-        let payload = sprintf "nonce=%d&txid=%s" nonceValue transactionIds
+        let payload = sprintf "nonce=%d&txid=%s" nonceValue orderID
         let fullPayload = payload + (if includeTrades then "&trades=true" else "") + (userRef |> Option.map (sprintf "&userref=%d") |> Option.defaultValue "")
         let content = new StringContent(fullPayload, Encoding.UTF8, "application/x-www-form-urlencoded")
         
