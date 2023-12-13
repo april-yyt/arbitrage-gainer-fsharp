@@ -2,6 +2,18 @@ open Azure
 open Azure.Data.Tables
 open Azure.Identity
 
+// --------------------------
+// DB Configuration Constants
+// --------------------------
+
+let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" // This field will later use the connection string from the Azure console.
+let tableClient = TableServiceClient storageConnString
+let table = tableClient.GetTableClient "Orders"
+
+// --------------------------
+// DB Schema
+// --------------------------
+
 type OrderEntity() =
     inherit TableEntity()
     member val OrderID: string = null with get, set
@@ -12,11 +24,9 @@ type OrderEntity() =
     member val Exchange: string = null with get, set
     member val Status: string = null with get, set
 
-let namespace = "ArbitrageGainer.servicebus.windows.net"
-let tableServiceClient = TableServiceClient(namespace, DefaultAzureCredential())
-
-let tableName = "Orders"
-let tableClient = tableServiceClient.GetTableClient(tableName) 
+// --------------------------
+// DB Operations
+// --------------------------
 
 // Function to create table if it does not exist
 let createTableIfNotExists () =

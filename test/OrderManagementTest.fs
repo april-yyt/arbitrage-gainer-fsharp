@@ -1,5 +1,8 @@
 module OrderManagementTest
 
+open Azure
+open Azure.Data.Tables
+open Azure.Identity
 open System
 open NUnit.Framework
 open BenchmarkDotNet.Attributes
@@ -42,6 +45,10 @@ type OrderDetails = {
 // pass in orderID for querying order status(orderID and orderdetails.quantity for kraken)
 // returns OrderUpdate for querying order status
 type OrderUpdate = { OrderID: OrderID; OrderDetails: OrderDetails ; FulfillmentStatus: FulfillmentStatus }
+type OrderStatusUpdate = {
+    FulfillmentStatus: FulfillmentStatus
+    RemainingQuantity: float
+}
 
 type Event = 
     | OrderFulfillmentUpdated of FulfillmentStatus
@@ -50,6 +57,86 @@ type Event =
     | OrderProcessed of OrderUpdate
 
 type OrderEmitted = OrderDetails list
+
+// --------------------------
+// DB Configuration Constants
+// --------------------------
+
+let storageConnString = "DefaultEndpointsProtocol=..." 
+let tableClient = TableServiceClient storageConnString
+let table = tableClient.GetTableClient "OrderManagement"
+table.CreateIfNotExists () |> ignore
+
+// --------------------------
+// DB Schema
+// --------------------------
+
+type OrderEntity(orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
+    interface ITableEntity with
+        member val ETag = ETag "" with get, set
+        member val PartitionKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
+        member val RowKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
+        member val Timestamp = Nullable() with get, set
+    member val OrderID = orderID with get, set
+    member val Currency = currency with get, set
+    member val Price = price with get, set
+    member val OrderType = orderType with get, set
+    member val Quantity = quantity with get, set
+    member val Exchange = exchange with get, set
+    member val Status = status with get, set
+    member val RemainingQuantity = remainingQuantity with get, set
+
+    new() = 
+        OrderEntity(StringOrderID(""), "", 0.0, Buy, 0.0, "", FullyFulfilled, 0.0)
+
+
+// --------------------------
+// DB Operations
+// --------------------------
+
+let addOrder (orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
+    let order = OrderEntity(orderID, currency, price, orderType, quantity, exchange, status, remainingQuantity)
+    try
+        table.AddEntity(order) |> ignore
+        true 
+    with
+    | :? Azure.RequestFailedException as ex -> 
+        printfn "Error adding order: %s" ex.Message
+        false 
+
+
+let order1 = addOrder (StringOrderID "Order001", "BTCUSD", 10000.0, Buy, 1.0, "Bitfinex", OneSideFilled, 1.0)
+let order2 = addOrder (StringOrderID "Order002", "ETHUSD", 500.0, Sell, 10.0, "Kraken", PartiallyFulfilled, 5.0)
+let order3 = addOrder (StringOrderID "Order003", "LTCUSD", 150.0, Buy, 20.0, "Bitstamp", FullyFulfilled, 0.0)
+
+
+let addOrderToDatabase (orderDetails: OrderDetails, orderID: OrderID) : bool =
+    table.CreateIfNotExists() |> ignore
+    let entity = OrderEntity(orderID, orderDetails.Currency, orderDetails.Price, orderDetails.OrderType, orderDetails.Quantity, orderDetails.Exchange, OneSideFilled, orderDetails.Quantity)
+    try
+        table.AddEntity(entity) |> ignore
+        true 
+    with
+    | :? Azure.RequestFailedException as ex -> 
+        printfn "Error adding entity: %s" ex.Message
+        false 
+
+
+let updateOrderStatus (orderID: OrderID, newStatus: FulfillmentStatus, remainingQuantity: Quantity) : bool =
+    let partitionKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
+    let rowKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
+    try
+        let response = table.GetEntity<OrderEntity>(partitionKey, rowKey)
+        let entity = response.Value
+        entity.Status <- newStatus
+        entity.RemainingQuantity <- remainingQuantity
+        table.UpdateEntity(entity, ETag.All, TableUpdateMode.Replace) |> ignore
+        true 
+    with
+    | :? Azure.RequestFailedException as ex -> 
+        printfn "Error updating entity: %s" ex.Message
+        false 
+
 
 // -------------------------
 // Helper Function Definitions
@@ -102,7 +189,6 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
                 match orderResult with
                 | Some responseString ->
                     printfn "Response from Bitstamp: %s" responseString
-                    // respnse string 已经经过解析就是orderID
                     return Result.Ok (StringOrderID responseString)
                 | None ->
                     return Result.Error "Failed to submit order to Bitstamp"
@@ -117,46 +203,56 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
 
 
 // Helper function to parse Bitfinex response and store in database
-let processBitfinexResponse (jsonString: string) (originalOrderQuantity: float) : Result<FulfillmentStatus, string> =
+let processBitfinexResponse (jsonString: string) (originalOrderQuantity: float) : Result<OrderStatusUpdate, string> =
     // passing in the response and historical order amt to compare and match execution status
     match BitfinexAPI.parseBitfinexOrderStatusResponse jsonString with
     | Result.Ok executedAmount ->
-        if executedAmount = originalOrderQuantity then
-            Result.Ok FullyFulfilled
-        elif executedAmount > 0.0 then
-            Result.Ok PartiallyFulfilled
-        else
-            Result.Ok OneSideFilled
+        let remainingAmount = originalOrderQuantity - executedAmount
+        let statusUpdate = {
+            FulfillmentStatus = 
+                if executedAmount = originalOrderQuantity then FullyFulfilled
+                elif executedAmount > 0.0 then PartiallyFulfilled
+                else OneSideFilled
+            RemainingQuantity = remainingAmount
+        }
+        Result.Ok statusUpdate
     | Result.Error errMsg ->
         Result.Error errMsg
 
 // Helper function to parse Kraken response and store in database
-let processKrakenResponse (jsonString: string) : Result<FulfillmentStatus, string> =
+let processKrakenResponse (jsonString: string) : Result<OrderStatusUpdate, string> =
     match KrakenAPI.parseKrakenOrderResponse jsonString with
     | Result.Ok (orderId, vol, vol_exec) ->
         let volFloat = float vol
         let volExecFloat = float vol_exec
-        let status = 
-            if volExecFloat >= volFloat then FullyFulfilled
-            else if volExecFloat > 0.0 then PartiallyFulfilled
-            else OneSideFilled
-        Result.Ok status
+        let remainingAmount = volFloat - volExecFloat
+        let statusUpdate = {
+            FulfillmentStatus = 
+                if volExecFloat >= volFloat then FullyFulfilled
+                else if volExecFloat > 0.0 then PartiallyFulfilled
+                else OneSideFilled
+            RemainingQuantity = remainingAmount
+        }
+        Result.Ok statusUpdate
     | Result.Error errMsg ->
         Result.Error errMsg
 
+
 // Helper function to parse Bitstamp response and store in database
-let processBitstampResponse (jsonString: string) : Result<FulfillmentStatus, string> =
+let processBitstampResponse (jsonString: string) : Result<OrderStatusUpdate, string> =
     match BitstampAPI.parseResponseOrderStatus jsonString with
     | Result.Ok orderResponse ->
         let amountRemaining = float orderResponse.AmountRemaining
-        let status = 
-            if amountRemaining = 0.0 then FullyFulfilled
-            else if amountRemaining > 0.0 then PartiallyFulfilled
-            else OneSideFilled
-        Result.Ok status
+        let statusUpdate = {
+            FulfillmentStatus = 
+                if amountRemaining = 0.0 then FullyFulfilled
+                else if amountRemaining > 0.0 then PartiallyFulfilled
+                else OneSideFilled
+            RemainingQuantity = amountRemaining
+        }
+        Result.Ok statusUpdate
     | Result.Error errMsg ->
         Result.Error errMsg
-
 
 
 // -------------------------
@@ -170,8 +266,12 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
         let! result = submitOrderAsync orderDetails
         match result with
         | Result.Ok orderID ->
-            // Database operations should be here, store id and order details in db
-            return Result.Ok orderID
+            // Database operation to store order details in db
+            match addOrderToDatabase orderDetails orderID with
+            | true -> 
+                return Result.Ok orderID
+            | false ->
+                return Result.Error "Failed to add order to database"
         | Result.Error errMsg ->
             return Result.Error errMsg
     }
@@ -183,15 +283,22 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
         // Wait for 30 seconds to get the order status updates
         do! Async.Sleep(30000)
 
+        let updateOrderInDatabase (orderStatusUpdate: OrderStatusUpdate) =
+            match updateOrderStatus orderID orderStatusUpdate.FulfillmentStatus orderStatusUpdate.RemainingQuantity with
+            | true ->
+                Result.Ok (OrderFulfillmentUpdated orderStatusUpdate.FulfillmentStatus)
+            | false ->
+                Result.Error "Failed to update order in database"
+
+                    // let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
         match orderDetails.Exchange with
         | "Bitfinex" ->
             let! bitfinexResponseOption = BitfinexAPI.retrieveOrderTrades "DOTUSD" 1747566428
             match bitfinexResponseOption with
             | Some bitfinexResponse ->
                 match processBitfinexResponse bitfinexResponse orderDetails.Quantity with
-                | Result.Ok fulfillmentStatus ->
-                    let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
-                    return Result.Ok (OrderFulfillmentUpdated fulfillmentStatus)
+                | Result.Ok orderStatusUpdate ->
+                    return updateOrderInDatabase orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
@@ -202,9 +309,8 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             match krakenResponse with
             | Some response ->
                 match processKrakenResponse response with
-                | Result.Ok fulfillmentStatus ->
-                    let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
-                    return Result.Ok (OrderFulfillmentUpdated fulfillmentStatus)
+                | Result.Ok orderStatusUpdate ->
+                    return updateOrderInDatabase orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
@@ -215,9 +321,8 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             match bitstampResponse with
             | Some response ->
                 match processBitstampResponse response with
-                | Result.Ok fulfillmentStatus ->
-                    let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
-                    return Result.Ok (OrderFulfillmentUpdated fulfillmentStatus)
+                | Result.Ok orderStatusUpdate ->
+                    return updateOrderInDatabase orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
