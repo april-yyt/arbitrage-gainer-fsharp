@@ -186,3 +186,17 @@ We have classified the following functionalities in our system as domain service
 - `/tradingstart`: This POST endpoint activates the trading strategy and begins the trading flow.
 - `/tradingstop`: This POST endpoint deactivates the trading strategy and halts the trading flow.
 - `/crosstradedcurrencies`: This GET endpoint retrieves pairs of currencies traded at all the currencies contained within the exchange files expected in the same location as the code. It also logs the output into a text file (`crossTradedCurrencies.txt`) and perpetuates the results in an Azure table.
+
+### Azure Service Bus
+- **[Service Bus Setup Code Pointer]()**
+- **[tradingqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/tradingqueue/overview)**: connecting **TradingStrategy** and **ArbitrageOpportunity** bounded contexts
+   - message type:
+      - "Stop trading" for stopping trading
+      - stringified trading strategy parameters for starting trading with specified trading strategy
+   - send message code pointer
+   - receive message code pointer
+- **[orderqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/orderqueue/overview)**: connecting **ArbitrageOpportunity** and **OrderManagement** bounded contexts
+   - message type:
+      - stringified order details for creating orders
+   - send message code pointer
+   - receive message code pointer 

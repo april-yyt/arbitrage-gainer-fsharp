@@ -2,14 +2,15 @@ module ArbitrageOpportunity
 
 open Types
 open TradingStrategy
+open HistoricalSpreadCalc
 open System
 open System.Threading
 open System.Net.Http
 open System.Net.WebSockets
 open Newtonsoft.Json
 open ServiceBus
-// open DatabaseOperations
-// open DatabaseSchema
+open Azure
+open Azure.Data.Tables
 
 let wsUrl = "wss://one8656-live-data.onrender.com"
 let apiKey = "qC2Ix1WnmcpTMRP2TqQ8hVZsxihJq7Hq"
@@ -246,6 +247,18 @@ let getExchangeFromUnprocessedQuote (data: UnprocessedQuote) =
     | 23 -> "Kraken"
     | _ -> "Others"
 
+// Helper that gets Top N Currencies from DB
+let getTopNCurrencies (n: int): CurrencyPair seq = 
+    let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
+    let tableClient = TableServiceClient storageConnString
+    let table = tableClient.GetTableClient("HistoricalArbitrageOpportunities")
+    let queryResults = table.Query<ArbitrageOpEntry>()
+    queryResults 
+    |> Seq.map (fun entity ->
+        currencyPairFromStr entity.CurrencyPair
+    )
+    |> Seq.take n
+
 // Helper that parses JSON array received from Polygon to a quote list
 let parseJsonArray (res: string) : Quote seq =
     let unprocessedQuotes = JsonConvert.DeserializeObject<UnprocessedQuote seq>(res)
@@ -264,6 +277,7 @@ let parseJsonArray (res: string) : Quote seq =
                 Time = quote.Time;
                 // Time = Int64.Parse(quote.Time.TrimEnd('L'));
             }) 
+        // |> Seq.filter (fun quote -> Seq.contains quote.CurrencyPair getTopNCurrencies)
 
 // Workflow: Assess Real Time Arbitrage Opportunity
 
