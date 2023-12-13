@@ -1,6 +1,6 @@
 module HistoricalSpreadCalc
 
-open ArbitrageOpportunity
+// open ArbitrageOpportunity
 open CrossTradedCryptos
 open Types
 open Suave
@@ -47,15 +47,31 @@ type ArbitrageOpEntry (pair: string, numOpportunities: int) =
     new() = ArbitrageOpEntry(null, 0)
     member val CurrencyPair = pair with get, set
     member val NumberOpportunities = numOpportunities with get, set
+
+// --------------------------
+// DB Configuration Constants
+// --------------------------
+let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
+let tableClient = TableServiceClient storageConnString
+
 // -------------------------
 // Helper Function Definitions
 // -------------------------
 
-let currencyPairFromStr (pairStr: string) =
+let currencyPairFromStr (pairStr: string) : CurrencyPair =
     {
         Currency1 = pairStr.[0..2]
         Currency2 = pairStr.[4..6]
     }
+
+/// Helper that gets cross traded currencies from DB
+let getCrossTradedCurrencies = 
+    let table = tableClient.GetTableClient("CrosstradedCurrencies")
+    let queryResults = table.Query<CryptoDBEntry>()
+    queryResults 
+    |> Seq.map (fun entity ->
+        currencyPairFromStr entity.CurrencyPair
+    )
 
 let getExchangeFromUnprocessedQuote (data: UnprocessedQuote) = 
     match data.Exchange with
@@ -122,13 +138,6 @@ let writeResultToFile (opportunities: ArbitrageOpportunity list) =
     writer.Flush()
     writer.Close()
 
-// --------------------------
-// DB Configuration Constants
-// --------------------------
-let storageConnString = "AzureStorageConnectionString" // This field will later use the connection string from the Azure console.
-let tableClient = TableServiceClient storageConnString
-let table = tableClient.GetTableClient "HistoricalArbitrageOpportunities"
-
 // -------------------------
 // Workflow Implementation
 // -------------------------
@@ -156,11 +165,12 @@ let calculateHistoricalSpreadWorkflow (request: HistoricalSpreadCalculationReque
 
 
 let persistOpportunitiesInDB ( ops: ArbitrageOpportunitiesIdentified ) =
-    table.CreateIfNotExists () |> ignore
+    let historicalTable = tableClient.GetTableClient "HistoricalArbitrageOpportunities"
+    historicalTable.CreateIfNotExists () |> ignore
 
     ops |> List.map (fun op ->ArbitrageOpEntry(op.Currency1 + "-" + op.Currency2, op.NumberOfOpportunitiesIdentified))
         |> List.map (fun entry -> TableTransactionAction (TableTransactionActionType.Add, entry))
-        |> table.SubmitTransaction
+        |> historicalTable.SubmitTransaction
 
 // ---------------------------
 // REST API Endpoint Handlers
