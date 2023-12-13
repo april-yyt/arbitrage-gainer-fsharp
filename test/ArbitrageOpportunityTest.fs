@@ -1,3 +1,5 @@
+module ArbitrageOpportunityTest
+
 open Types
 open ArbitrageOpportunity
 open ServiceBus
