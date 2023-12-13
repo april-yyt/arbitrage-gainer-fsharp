@@ -75,7 +75,6 @@ let validateFileExistence filename: Result<string, string> =
     | true -> Ok filename
     | false -> Error ("File to load (" + filename + ") doesn't exist")
 
-// Currently, since we make the text 
 let validateFileType (filename: string): Result<string, string> =
     match filename.EndsWith(".txt") with
     | true -> Ok filename
@@ -94,6 +93,7 @@ let validateInputFiles (filenames: string seq) =
         | true -> Error "Input files validation failed."
         | false -> Ok { InputExchanges = filenames }
     
+// Precondition: the currency data files are all in the current directory
 let exchangeToFilename (exchange: string) =
     exchange + ".txt"
 
@@ -138,7 +138,7 @@ let outputPairsToFile (path: string) (pairs: CurrencyPair seq) =
 // --------------------------
 let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
 let tableClient = TableServiceClient storageConnString
-let table = tableClient.GetTableClient "CrosstradedCurrenciesTest"
+let table = tableClient.GetTableClient "CrosstradedCurrencies"
 
 // ----------
 // Workflows
