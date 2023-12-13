@@ -42,7 +42,7 @@ type ArbitrageOpEntry (pair: string, numOpportunities: int) =
     interface ITableEntity with
         member val ETag = ETag "" with get, set
         member val PartitionKey = "" with get, set
-        member val RowKey = "" with get, set
+        member val RowKey = pair with get, set
         member val Timestamp = Nullable() with get, set
     new() = ArbitrageOpEntry(null, 0)
     member val CurrencyPair = pair with get, set
@@ -131,7 +131,7 @@ let identifyArbitrageOpportunities (selectedQuotes: Quote list) (quotes: Quote l
         | _ -> None)
 
 let writeResultToFile (opportunities: ArbitrageOpportunity list) = 
-    let writer = new StreamWriter("historicalAribtrageOpportunitites.txt", true)
+    let writer = new StreamWriter("historicalAribtrageOpportunitites.txt", false)
     opportunities 
     |> List.iter (fun op -> 
         let text = sprintf "%s%s %d" op.Currency1 op.Currency2 op.NumberOfOpportunitiesIdentified
