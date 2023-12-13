@@ -1,4 +1,4 @@
-# Arbitrage Gainer Milestone III
+# Arbitrage Gainer
 
 **Team 6:** Sahana Rangarajan (ssrangar), April Yang (yutongya), Audrey Zhou (yutongz7)
 
@@ -12,6 +12,7 @@
 4. [Domain Services](#domain-services)
    - 4a. [Crosstraded Cryptocurrencies](#crosstraded-cryptocurrencies)
    - 4b. [Historical Spread Calculation](#historical-spread-calculation)
+5. [REST Endpoints](#rest-endpoints)
 
 ## Trading Strategy
 
@@ -174,3 +175,13 @@ We have classified the following functionalities in our system as domain service
   - We validate that the JSON type provider has all the fields we require [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L72)
   - We handle DB errors [here](https://github.com/yutongyaF2023/arbitragegainer/blob/main/HistoricalSpreadCalc.fs#L185)
   - See the REST API endpoint to see the errors propagate into failures.
+
+### REST Endpoints
+- `/tradingstrategy`: This endpoint accepts a new trading strategy, specified as the following required query parameters:
+  - `trackedcurrencies`: the number of cryptocurrencies to track (**int**)
+  - `minpricespread`: minimal price spread value (**float**)
+  - `minprofit`: minimal trasaction profit (**float**)
+  - `maxamount`: maximal transaction amount (**float**)
+  - `maxdailyvol`: maximal daily transactions volume (**float**)
+- `/tradingstart`: This endpoint activates the trading strategy and begins the trading flow.
+- `/tradingstop`: This endpoint deactivates the trading strategy and halts the trading flow.
