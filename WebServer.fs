@@ -8,7 +8,7 @@ open Suave.Utils.Collections
 open Suave.RequestErrors
 open CrossTradedCryptos
 open TradingStrategy
-open HistoricalSpreadCalculation
+open HistoricalSpreadCalc
 
 let app =
   choose
