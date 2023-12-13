@@ -4,6 +4,7 @@ open System.Net.Http
 open System.Text
 open Newtonsoft.Json
 open System.Threading.Tasks
+open FSharp.Data
 
 let private httpClient = new HttpClient()
 
@@ -16,18 +17,22 @@ let submitOrder (orderType: string) (symbol: string) (amount: string) (price: st
         let! response = httpClient.PostAsync(url, content) |> Async.AwaitTask
         if response.IsSuccessStatusCode then
             let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-            return Some (JsonConvert.DeserializeObject<_>(responseString))
+            // return Some (JsonConvert.DeserializeObject<_>(responseString))
+            return Some responseString
         else
             return None
     }
 
 let retrieveOrderTrades (symbol: string) (orderId: int) =
     async {
-        let url = sprintf "https://18656-testing-server.azurewebsites.net/order/status/auth/r/order/%st%d/trades" symbol orderId
-        let! response = httpClient.GetAsync(url) |> Async.AwaitTask
+        let url = sprintf "https://18656-testing-server.azurewebsites.net/order/status/auth/r/order/%s:%d/trades" symbol orderId
+        let requestContent = new StringContent("", Encoding.UTF8, "application/json") 
+        let! response = httpClient.PostAsync(url, requestContent) |> Async.AwaitTask
+        printfn "Bitfinex Trades Rsp: %A" response
         if response.IsSuccessStatusCode then
             let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-            return Some (JsonConvert.DeserializeObject<_>(responseString))
+            // return Some (JsonConvert.DeserializeObject<_>(responseString))
+            return Some responseString
         else
             return None
     }
