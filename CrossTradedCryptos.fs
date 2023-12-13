@@ -53,7 +53,7 @@ type CryptoDBEntry (pair: string) =
     interface ITableEntity with
         member val ETag = ETag "" with get, set
         member val PartitionKey = "" with get, set
-        member val RowKey = "" with get, set
+        member val RowKey = pair with get, set
         member val Timestamp = Nullable() with get, set
     new() = CryptoDBEntry(null)
     member val CurrencyPair = pair with get, set
@@ -138,7 +138,7 @@ let outputPairsToFile (path: string) (pairs: CurrencyPair seq) =
 // --------------------------
 let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
 let tableClient = TableServiceClient storageConnString
-let table = tableClient.GetTableClient "CrosstradedCurrencies"
+let table = tableClient.GetTableClient "CrosstradedCurrenciesTest"
 
 // ----------
 // Workflows
@@ -184,5 +184,5 @@ let app =
     GET >=> choose
         [ path "/crosstradedcurrencies" >=> crossTradedCurrencies]
 let cfg = { defaultConfig with bindings = [ HttpBinding.createSimple HTTP "0.0.0.0" 8080  ] }
-let _, webServer = startWebServerAsync cfg app
-Async.Start (webServer) |> ignore
+// let _, webServer = startWebServerAsync cfg app
+// Async.Start (webServer) |> ignore
