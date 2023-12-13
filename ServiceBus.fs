@@ -1,6 +1,35 @@
+module ServiceBus
+
+open Azure.Messaging.ServiceBus
+open Azure.Identity
 open Azure
 open Azure.Data.Tables
 open Azure.Identity
+
+let ns = "ArbitrageGainer.servicebus.windows.net"
+
+let sendMessageAsync(queueName : string, messageContent: string) =
+    let client = ServiceBusClient(ns, DefaultAzureCredential())
+    let sender = client.CreateSender(queueName)
+    let serviceBusMessage = new ServiceBusMessage(messageContent : string)
+
+    sender.SendMessageAsync(serviceBusMessage).Wait()
+
+    sender.DisposeAsync().AsTask().Wait()
+    client.DisposeAsync().AsTask().Wait()
+        
+let receiveMessageAsync(queueName : string) =
+    let client = ServiceBusClient(ns, DefaultAzureCredential())
+    let receiver = client.CreateReceiver(queueName)
+    let receivedMessage = receiver.ReceiveMessageAsync().Result
+    receiver.DisposeAsync().AsTask().Wait()
+    client.DisposeAsync().AsTask().Wait()
+
+    match receivedMessage with
+    | null -> ""
+    | _ -> receivedMessage.Body.ToString()
+
+
 
 type OrderEntity() =
     inherit TableEntity()
@@ -11,12 +40,10 @@ type OrderEntity() =
     member val Quantity: int = 0 with get, set
     member val Exchange: string = null with get, set
     member val Status: string = null with get, set
-
-let namespace = "YourTableStorageNamespace" 
-let tableServiceClient = TableServiceClient(namespace, DefaultAzureCredential())
-
 let tableName = "Orders"
+let tableServiceClient = TableServiceClient(ns, DefaultAzureCredential())
 let tableClient = tableServiceClient.GetTableClient(tableName) 
+
 
 // Function to create table if it does not exist
 let createTableIfNotExists () =
