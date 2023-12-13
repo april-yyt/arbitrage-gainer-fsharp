@@ -281,9 +281,3 @@ let stopTrading =
     sendMessageAsync("tradingqueue", "Stop trading")
     OK "Trading strategy deactivated"
     )
-
-let app =
-    POST >=> choose
-        [ path "/tradingstrategy" >=> newTradingStrategy
-          path "/tradingstart" >=> startTrading
-          path "/tradingstop" >=> stopTrading ]

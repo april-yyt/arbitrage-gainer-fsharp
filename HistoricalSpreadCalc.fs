@@ -186,7 +186,3 @@ let historicalSpread =
             | true -> BAD_REQUEST "Error in uploading to database"
             | _ -> OK "Performed historical spread and uploaded arbitrage opportunities to database."
     )
-
-let app =
-    POST >=> choose
-        [ path "/historicalspread" >=> historicalSpread]

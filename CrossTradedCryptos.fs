@@ -97,16 +97,17 @@ let validateInputFiles (filenames: string seq) =
 let exchangeToFilename (exchange: string) =
     exchange + ".txt"
 
+
 let validateInputExchanges (exchanges: string seq) = 
     exchanges |> Seq.map exchangeToFilename
                 |> validateInputFiles
 
-let validCurrencyPairsFromFile (exchange: string) =
-    let pairs = System.IO.File.ReadLines(exchangeToFilename exchange)
+let validCurrencyPairsFromFile (filename: string) =
+    let pairs = System.IO.File.ReadLines(filename)
     let filteredPairs = pairs // Read pairs from input file line by line
                         |> Seq.filter (fun s -> s.Length = 6) // Ignore pairs that are > 6 letters (pair of 3-letter currencies)
                         |> Seq.map(fun s -> {Currency1 = s.[0..2]; Currency2 = s.[3..5]}) // Convert to CurrencyPairs
-                        |> Seq.map(fun p -> {Exchange = exchange; CurrencyPair = p})
+                        |> Seq.map(fun p -> {Exchange = filename; CurrencyPair = p})
     filteredPairs
 
 // Input: "Bitfinex", "Bitstamp", "Kraken"
@@ -138,7 +139,8 @@ let outputPairsToFile (path: string) (pairs: CurrencyPair seq) =
 // --------------------------
 let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
 let tableClient = TableServiceClient storageConnString
-let table = tableClient.GetTableClient "CrosstradedCurrencies"
+let tableName = "CrossTradedCurrencies"
+let table = tableClient.GetTableClient tableName
 
 // ----------
 // Workflows
@@ -158,7 +160,7 @@ let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
 
     input.UpdatedCrossTradedCryptos
     |> Seq.map createDBEntryFromPair
-    |> Seq.map (fun entry -> TableTransactionAction (TableTransactionActionType.Add, entry))
+    |> Seq.map (fun entry -> TableTransactionAction (TableTransactionActionType.UpdateReplace, entry))
     |> table.SubmitTransaction
 
 // ---------------------------
@@ -177,12 +179,5 @@ let crossTradedCurrencies =
         let dbResp = uploadCryptoPairsToDB success
         match dbRespContainsError dbResp with
         | true -> BAD_REQUEST "Error in uploading to database"
-        | _ -> OK "Uploaded cross-traded currencies to database."
+        | _ -> OK (sprintf "Uploaded the following cross-traded currencies to database %s: %s" tableName (File.ReadAllText "crossTradedCurrencies.txt"))
     )
-
-let app =
-    GET >=> choose
-        [ path "/crosstradedcurrencies" >=> crossTradedCurrencies]
-let cfg = { defaultConfig with bindings = [ HttpBinding.createSimple HTTP "0.0.0.0" 8080  ] }
-// let _, webServer = startWebServerAsync cfg app
-// Async.Start (webServer) |> ignore
