@@ -16,13 +16,13 @@ type CurrencyPair = {
     Currency2: string
 }
 type Currency = string
-type Price = float
-type OrderType = Buy | Sell
-type Quantity = int
+type Price = Price of float
+type OrderType = string
+type Quantity = Quantity of float
 type Exchange = string
 type OrderID = int
 type TradeID = int
-type Time = int
+type Time = int64
 
 type UnprocessedQuote = {
     [<JsonProperty("ev")>]
@@ -30,34 +30,42 @@ type UnprocessedQuote = {
     [<JsonProperty("pair")>]
     CurrencyPair: string
     [<JsonProperty("bp")>]
-    BidPrice: Quantity
+    BidPrice: float
     [<JsonProperty("bs")>]
-    BidSize: Quantity
+    BidSize: float
     [<JsonProperty("ap")>]
-    AskPrice: Price
+    AskPrice: float
     [<JsonProperty("as")>]
-    AskSize: Price
+    AskSize: float
     [<JsonProperty("t")>]
-    Time: Time
+    Time: string
     [<JsonProperty("x")>]
     Exchange: int
     [<JsonProperty("r")>]
-    ReceiveTime: Time
+    ReceiveTime: string
 } 
+type TradingStrategyParameters =
+    { TrackedCurrencies: int
+      MinPriceSpread: float
+      MinTransactionProfit: float
+      MaxAmountTotal: float // crypto quantity * price, buying and
+      // selling, per transaction
+      MaxDailyVolume: float } // quantity of cryptocurrency
+
 type Quote = {
     Exchange: Exchange
     CurrencyPair: CurrencyPair;
-    BidPrice: Price;
-    AskPrice: Price;                          
-    BidSize: Quantity;
-    AskSize: Quantity;
+    BidPrice: float;
+    AskPrice: float;                          
+    BidSize: float;
+    AskSize: float;
     Time: Time;
 }
 
 type OrderDetails = {
     Currency: Currency
-    Price: Price
+    Price: float
     OrderType: OrderType
-    Quantity: Quantity
+    Quantity: float
     Exchange: Exchange
 }
