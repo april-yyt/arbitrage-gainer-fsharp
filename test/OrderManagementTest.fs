@@ -15,6 +15,8 @@ open BitfinexAPI
 open KrakenAPI
 open BitstampAPI
 open FSharp.Data
+open ServiceBus
+
 
 // -------------------------
 // Types and Event Definitions
@@ -44,7 +46,7 @@ type OrderDetails = {
 // pass in OrderDetails for creating a new order, extract orderID after order creation
 // pass in orderID for querying order status(orderID and orderdetails.quantity for kraken)
 // returns OrderUpdate for querying order status
-type OrderUpdate = { OrderID: OrderID; OrderDetails: OrderDetails ; FulfillmentStatus: FulfillmentStatus }
+type OrderUpdate = { OrderID: OrderID; OrderDetails: OrderDetails ; FulfillmentStatus: FulfillmentStatus ; RemainingQuantity: float }
 type OrderStatusUpdate = {
     FulfillmentStatus: FulfillmentStatus
     RemainingQuantity: float
@@ -332,6 +334,12 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             return Result.Error "Unsupported exchange"
     }
 
+let sendOrderProcessedMessageAsync (queueName: string) (orderUpdate: OrderUpdate) : Async<Unit> =
+    async {
+        let json = JsonConvert.SerializeObject(orderUpdate)
+        sendMessageAsync(queueName, json) 
+    }
+
 // Main Workflow of Order Management: to create and process orders
 let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<string, string>> =
     async {
@@ -343,7 +351,13 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<string, 
                     match createResult with
                     | Result.Ok orderID ->
                         let! updateResult = processOrderUpdate orderID orderDetails
-                        return updateResult
+                        match updateResult with
+                        | Result.Ok event ->
+                            match event with
+                            | OrderProcessed orderUpdate ->
+                                do! sendOrderProcessedMessageAsync "tradingqueue" orderUpdate
+                                return Result.Ok event
+                            | _ -> return Result.Ok event
                     | Result.Error errMsg ->
                         return Result.Error errMsg
                 })
@@ -362,7 +376,6 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<string, 
         else 
             return Result.Error "There were errors in processing some orders."
     }
-
 
 [<TestFixture>]
 type OrderManagementTests() =
