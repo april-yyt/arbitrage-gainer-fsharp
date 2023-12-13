@@ -2,6 +2,7 @@ module CrossTradedCryptos
 
 open System
 open System.Collections.Generic
+open System.IO
 open Azure
 open Azure.Data.Tables
 open Suave
@@ -52,7 +53,7 @@ type CryptoDBEntry (pair: string) =
     interface ITableEntity with
         member val ETag = ETag "" with get, set
         member val PartitionKey = "" with get, set
-        member val RowKey = "" with get, set
+        member val RowKey = pair with get, set
         member val Timestamp = Nullable() with get, set
     new() = CryptoDBEntry(null)
     member val CurrencyPair = pair with get, set
@@ -74,7 +75,6 @@ let validateFileExistence filename: Result<string, string> =
     | true -> Ok filename
     | false -> Error ("File to load (" + filename + ") doesn't exist")
 
-// Currently, since we make the text 
 let validateFileType (filename: string): Result<string, string> =
     match filename.EndsWith(".txt") with
     | true -> Ok filename
@@ -93,6 +93,7 @@ let validateInputFiles (filenames: string seq) =
         | true -> Error "Input files validation failed."
         | false -> Ok { InputExchanges = filenames }
     
+// Precondition: the currency data files are all in the current directory
 let exchangeToFilename (exchange: string) =
     exchange + ".txt"
 
@@ -127,11 +128,15 @@ let dbRespContainsError (resp: Response<IReadOnlyList<Response>>) : bool =
     respList |> Seq.map(fun r -> r.IsError) // Check if each response is an error
             |> Seq.contains true // Check if any response is an error
 
+let outputPairsToFile (path: string) (pairs: CurrencyPair seq) =
+    let pairsStrs = pairs |> Seq.map(fun p -> sprintf "%s-%s" p.Currency1 p.Currency2)
+                        |> Seq.toList
+    File.WriteAllLines(path, pairsStrs)
 
 // --------------------------
 // DB Configuration Constants
 // --------------------------
-let storageConnString = "AzureStorageConnectionString" // This field will later use the connection string from the Azure console.
+let storageConnString = "DefaultEndpointsProtocol=https;AccountName=18656team6;AccountKey=qJTSPfoWo5/Qjn9qFcogdO5FWeIYs9+r+JAp+6maOe/8duiWSQQL46120SrZTMusJFi1WtKenx+e+AStHjqkTA==;EndpointSuffix=core.windows.net" 
 let tableClient = TableServiceClient storageConnString
 let table = tableClient.GetTableClient "CrosstradedCurrencies"
 
@@ -159,7 +164,7 @@ let uploadCryptoPairsToDB (input: CrossTradedCryptosUpdated) =
 // ---------------------------
 // REST API Endpoint Handlers
 // ---------------------------
-let crossTradedCryptos =
+let crossTradedCurrencies =
     request (fun r ->
     let input = {InputExchanges = ["Bitfinex"; "Bitstamp"; "Kraken"]}
     let updatedCryptos = validateInputExchanges input.InputExchanges
@@ -167,6 +172,8 @@ let crossTradedCryptos =
     match updatedCryptos with 
     | Error failure -> BAD_REQUEST failure
     | Ok success ->
+        // Update for M4: output the pairs to a file in addition to persisting in DB
+        outputPairsToFile "crossTradedCurrencies.txt" success.UpdatedCrossTradedCryptos
         let dbResp = uploadCryptoPairsToDB success
         match dbRespContainsError dbResp with
         | true -> BAD_REQUEST "Error in uploading to database"
@@ -174,5 +181,8 @@ let crossTradedCryptos =
     )
 
 let app =
-    POST >=> choose
-        [ path "/crosstradedcryptos" >=> crossTradedCryptos]
+    GET >=> choose
+        [ path "/crosstradedcurrencies" >=> crossTradedCurrencies]
+let cfg = { defaultConfig with bindings = [ HttpBinding.createSimple HTTP "0.0.0.0" 8080  ] }
+// let _, webServer = startWebServerAsync cfg app
+// Async.Start (webServer) |> ignore

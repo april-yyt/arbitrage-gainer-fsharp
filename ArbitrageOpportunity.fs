@@ -261,7 +261,8 @@ let parseJsonArray (res: string) : Quote seq =
                 AskPrice = quote.AskPrice;                          
                 BidSize = quote.BidSize;
                 AskSize = quote.AskSize;
-                Time = Int64.Parse(quote.Time.TrimEnd('L'));
+                Time = quote.Time;
+                // Time = Int64.Parse(quote.Time.TrimEnd('L'));
             }) 
 
 // Workflow: Assess Real Time Arbitrage Opportunity

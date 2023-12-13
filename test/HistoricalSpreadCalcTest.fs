@@ -1,3 +1,5 @@
+module HistoricalSpreadCalcTest
+
 open BenchmarkDotNet.Attributes
 open BenchmarkDotNet.Running
 open Newtonsoft.Json
@@ -5,6 +7,8 @@ open System
 open System.IO
 open System.Reflection
 open ServiceBus
+open Types
+open HistoricalSpreadCalc
 
 
 type CurrencyPair = {
@@ -96,19 +100,7 @@ let regroupQuotesIntoBucketsSeq (quotes: Quote seq) =
     quotes 
     |> Seq.groupBy (fun quote -> (quote.CurrencyPair, toBucketKey quote.Time))
 
-    
-// // Produces Key (currencyPair) - Value (quotes with highest price for every exchange) pair
-// let mapper (bucketedQuotes: Quote list) = 
-//     bucketedQuotes
-//     |> List.groupBy (fun quote -> quote.Exchange)
-//     |> List.collect (fun (_, quotesByExchange) ->
-//         quotesByExchange
-//         |> List.maxBy (fun quote -> quote.BidPrice)
-//         |> List.singleton)
-
-
 /// Selects the quote with the highest bid price for each exchange
-
 let selectHighestBidPerExchangeSeq (quotes: Quote seq) : Quote list =
     quotes
     |> Seq.groupBy (fun quote -> quote.Exchange)
@@ -157,11 +149,11 @@ let calculateHistoricalSpreadSeq =
         |> List.map (fun ((currency1, currency2), ops) -> 
             let num = Seq.sumBy (fun op -> op.NumberOfOpportunitiesIdentified) ops 
             let text = sprintf "%s%s %d" currency1 currency2 num
-            writer.WriteLine text
+            // writer.WriteLine text
             { Currency1 = currency1; Currency2 = currency2; NumberOfOpportunitiesIdentified = num }
         )
-    writer.Flush()
-    writer.Close()
+    // writer.Flush()
+    // writer.Close()
     opportunities
 
 // type HistoricalSpreadCalcBenchMark() = 
@@ -178,5 +170,5 @@ let calculateHistoricalSpreadSeq =
 
 // [<EntryPoint>]
 let main argv = 
-    calculateHistoricalSpreadSeq |> ignore
+    calculateHistoricalSpreadWorkflow UserInvocation |> ignore
     0

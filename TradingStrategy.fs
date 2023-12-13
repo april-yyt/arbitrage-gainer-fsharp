@@ -6,6 +6,9 @@ open Suave.Operators
 open Suave.Successful
 open Suave.Utils.Collections
 open Suave.RequestErrors
+open ServiceBus
+open Types
+open Newtonsoft.Json
 
 // ---------------------------
 // Types and Event Definitions
@@ -39,8 +42,7 @@ type TradingStrategyMessage =
     | Deactivate
     | GetStatus of AsyncReplyChannel<bool>
 
-// The Event discriminated union type is not currently used in this module; however, it will likely
-// be helpful for linking the bounded contexts together in future milestones.
+// Discriminated union type representing different events
 type Event =
     | DailyTransactionsVolumeUpdated
     | TotalTransactionsAmountUpdated
@@ -269,11 +271,14 @@ let newTradingStrategy =
 let startTrading =
     request (fun r ->
     tradingStrategyAgent.Post(Activate)
+    let stratJson = JsonConvert.SerializeObject(tradingStrategyAgent.PostAndReply(GetParams))
+    sendMessageAsync("tradingqueue", stratJson)
     OK "Trading strategy activated")
 
 let stopTrading =
     request (fun r ->
     tradingStrategyAgent.Post(Deactivate)
+    sendMessageAsync("tradingqueue", "Stop trading")
     OK "Trading strategy deactivated"
     )
 
