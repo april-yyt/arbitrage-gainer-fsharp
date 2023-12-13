@@ -287,19 +287,21 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
         | Result.Ok (OneSideFilled transactionHistory) ->
             // notify the user via e-mail 
             // persist the transaction history in the database -> update the order status as one side filled
-            match userNotification { OrderID = orderID; FulfillmentDetails = OnlyOneSideFilled } with
-            | Some _ -> return Result.Ok (UserNotificationSent orderID)
-            | None -> return Result.Error "Failed to send user notification"
-            let updatedEntity = 
-                transactionHistory
-                |> List.map (fun t -> 
-                    { new OrderEntity() with
-                        OrderID = t.OrderID
-                        // ... Set other properties ...
-                    })
-            match updateOrderInDatabase updatedEntity with
-            | true -> return Result.Ok (OrderFulfillmentUpdated OneSideFilled)
-            | false -> return Result.Error "Failed to update order in database"
+            let! notificationResult = userNotification orderDetails
+            match notificationResult with
+            | Result.Ok notificationSent ->
+                let updatedEntity = 
+                    transactionHistory
+                    |> List.map (fun t -> 
+                        { new OrderEntity() with
+                            OrderID = t.OrderID
+                            // ... Set other properties ...
+                        })
+                match updateOrderInDatabase updatedEntity with
+                | true -> return Result.Ok (OrderFulfillmentUpdated OneSideFilled)
+                | false -> return Result.Error "Failed to update order in database"
+            | Result.Error errMsg ->
+                return Result.Error errMsg
 
         | Result.Error errMsg -> 
             return Result.Error errMsg
@@ -308,13 +310,16 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
     }
 
 // Workflow: User Notification When Only One Side of the Order is Filled, to be in more details during Milestone IV.
-let userNotification (orderOneSideFilled: OrderOneSideFilled) : NotificationSentConfirmation option =
-    match sendEmailToUser orderOneSideFilled.OrderID with
-    | true -> 
-        match checkIfNotificationSent orderOneSideFilled.OrderID with
-        | true -> Some orderOneSideFilled.OrderID
-        | false -> None // Notification not sent
-    | false -> None // Email sending failed
+let userNotification (orderDetails: OrderDetails) : Async<Result<NotificationSentConfirmation, string>> =
+    async {
+        try
+            let messageContent = sprintf "Order with ID %d has only one side filled" orderDetails.OrderID
+            sendMessageAsync "your_queue_name" messageContent
+            return Result.Ok (NotificationSent orderDetails.OrderID)
+        with
+        | ex -> return Result.Error ex.Message
+    }
+
 
 // Main Workflow of Order Management: to create and process orders
 let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event list, string>> =

@@ -20,16 +20,17 @@ let submitOrder (pair: string) (orderType: string) (volume: string) (price: stri
         let! response = httpClient.PostAsync(url, content) |> Async.AwaitTask
         if response.IsSuccessStatusCode then
             let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-            return Some (JsonConvert.DeserializeObject<_>(responseString))
+            // return Some (JsonConvert.DeserializeObject<_>(responseString))
+            return Some responseString
         else
             return None
     }
 
-let queryOrdersInfo (orderID: string) (includeTrades: bool) (userRef: int option) =
+let queryOrdersInfo (transactionIds: string) (includeTrades: bool) (userRef: int option) =
     async {
         let url = "https://18656-testing-server.azurewebsites.net/order/status/0/private/QueryOrders"
         let nonceValue = generateNonce()
-        let payload = sprintf "nonce=%d&txid=%s" nonceValue orderID
+        let payload = sprintf "nonce=%d&txid=%s" nonceValue transactionIds
         let fullPayload = payload + (if includeTrades then "&trades=true" else "") + (userRef |> Option.map (sprintf "&userref=%d") |> Option.defaultValue "")
         let content = new StringContent(fullPayload, Encoding.UTF8, "application/x-www-form-urlencoded")
         
@@ -38,7 +39,8 @@ let queryOrdersInfo (orderID: string) (includeTrades: bool) (userRef: int option
         let! response = httpClient.PostAsync(url, content) |> Async.AwaitTask
         if response.IsSuccessStatusCode then
             let! responseString = response.Content.ReadAsStringAsync() |> Async.AwaitTask
-            return Some (JsonConvert.DeserializeObject<_>(responseString))
+            // return Some (JsonConvert.DeserializeObject<_>(responseString))
+            return Some responseString
         else
             return None
     }
