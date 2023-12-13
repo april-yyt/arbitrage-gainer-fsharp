@@ -4,9 +4,6 @@ open System.Net.Http
 open System.Text
 open Newtonsoft.Json
 
-
-//Types for API Responses
-
 // kraken submit
 type SubmitDescription = {
     order: string
@@ -19,8 +16,8 @@ type KrakenSubmitResponse = {
     error: string[]
     result: SubmitResult
 }
-
 // kraken order
+
 type OrderDescription = {
     [<JsonProperty("pair")>]
     Pair: string
@@ -118,6 +115,7 @@ type KrakenOrderResponse = {
 }
 
 
+
 // Helper functions to parse the responses from Kraken
 let parseKrakenSubmitResponse (jsonString: string) : Result<string, string> =
     try
@@ -143,7 +141,7 @@ let parseKrakenOrderResponse (jsonString: string) : Result<(string * string * st
         Result.Error (sprintf "JSON parsing error: %s" ex.Message)
 
 
-// Posting API requests
+// posting api requests
 
 let private httpClient = new HttpClient()
 

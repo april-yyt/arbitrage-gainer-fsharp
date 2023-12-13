@@ -38,11 +38,11 @@ type UnprocessedQuote = {
     [<JsonProperty("as")>]
     AskSize: float
     [<JsonProperty("t")>]
-    Time: string
+    Time: Time
     [<JsonProperty("x")>]
     Exchange: int
     [<JsonProperty("r")>]
-    ReceiveTime: string
+    ReceiveTime: Time
 } 
 type TradingStrategyParameters =
     { TrackedCurrencies: int

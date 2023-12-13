@@ -6,6 +6,38 @@ open System.Text
 open Newtonsoft.Json
 open System.Diagnostics
 
+type Transaction = {
+    [<JsonProperty("tid")>]
+    Tid: int64
+    [<JsonProperty("price")>]
+    Price: string
+    [<JsonProperty("fee")>]
+    Fee: string
+    [<JsonProperty("datetime")>]
+    Datetime: string
+    [<JsonProperty("type")>]
+    Type: int
+}
+
+type BitstampOrderResponse = {
+    [<JsonProperty("id")>]
+    Id: int64
+    [<JsonProperty("datetime")>]
+    Datetime: string
+    [<JsonProperty("type")>]
+    OrderType: string
+    [<JsonProperty("status")>]
+    Status: string
+    [<JsonProperty("market")>]
+    Market: string
+    [<JsonProperty("transactions")>]
+    Transactions: Transaction[]
+    [<JsonProperty("amount_remaining")>]
+    AmountRemaining: string
+    [<JsonProperty("client_order_id")>]
+    ClientOrderId: string
+}
+
 let private httpClient = new HttpClient(BaseAddress = Uri("https://18656-testing-server.azurewebsites.net"))
 
 let parseJsonResponseOrderID (json: string) =
@@ -16,6 +48,15 @@ let parseJsonResponseOrderID (json: string) =
         | _ -> None
     with
     | _ -> None
+
+let parseResponseOrderStatus (jsonString: string) : Result<BitstampOrderResponse, string> =
+    try
+        let parsedResponse = JsonConvert.DeserializeObject<BitstampOrderResponse>(jsonString)
+        Result.Ok parsedResponse
+    with
+    | :? Newtonsoft.Json.JsonException as ex -> 
+        Result.Error (sprintf "JSON parsing error: %s" ex.Message)
+
 
 
 let postRequest (url: string) (data: (string * string) list) =
@@ -28,7 +69,6 @@ let postRequest (url: string) (data: (string * string) list) =
         | true -> 
             let! responseString = Async.AwaitTask (response.Content.ReadAsStringAsync())
             Debug.WriteLine($"Response JSON: {responseString}")
-            // return Some (JsonConvert.DeserializeObject<_>(responseString))
             return parseJsonResponseOrderID(responseString)
         | false -> 
             Debug.WriteLine($"Error: {response.StatusCode}")
@@ -45,7 +85,6 @@ let postQueryRequest (url: string) (data: (string * string) list) =
         | true -> 
             let! responseString = Async.AwaitTask (response.Content.ReadAsStringAsync())
             Debug.WriteLine($"Response JSON: {responseString}")
-            // return Some (JsonConvert.DeserializeObject<_>(responseString))
             return Some responseString 
         | false -> 
             Debug.WriteLine($"Error: {response.StatusCode}")
