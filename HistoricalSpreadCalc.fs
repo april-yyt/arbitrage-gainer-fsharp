@@ -81,6 +81,7 @@ let getExchangeFromUnprocessedQuote (data: UnprocessedQuote) =
     | 1 -> "Coinbase"
 
 let processQuotes (unprocessedQuotes: UnprocessedQuote seq) = 
+    let crossTradedCurrencies = Seq.toList(getCrossTradedCurrencies)
     unprocessedQuotes 
     |> Seq.map (fun quote -> {
             Exchange = getExchangeFromUnprocessedQuote quote
@@ -90,7 +91,8 @@ let processQuotes (unprocessedQuotes: UnprocessedQuote seq) =
             BidSize = quote.BidSize;
             AskSize = quote.AskSize;
             Time = quote.Time;
-        }) 
+        })
+    |> Seq.filter (fun q -> (List.contains q.CurrencyPair crossTradedCurrencies))
 
 let toBucketKey (timestamp: int64) =
     let bucketSizeMs = 5L
@@ -169,7 +171,7 @@ let persistOpportunitiesInDB ( ops: ArbitrageOpportunitiesIdentified ) =
     historicalTable.CreateIfNotExists () |> ignore
 
     ops |> List.map (fun op ->ArbitrageOpEntry(op.Currency1 + "-" + op.Currency2, op.NumberOfOpportunitiesIdentified))
-        |> List.map (fun entry -> TableTransactionAction (TableTransactionActionType.Add, entry))
+        |> List.map (fun entry -> TableTransactionAction (TableTransactionActionType.UpdateReplace, entry))
         |> historicalTable.SubmitTransaction
 
 // ---------------------------

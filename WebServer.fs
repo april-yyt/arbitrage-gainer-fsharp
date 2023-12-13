@@ -3,9 +3,6 @@ module WebServer
 open Suave
 open Suave.Filters
 open Suave.Operators
-open Suave.Successful
-open Suave.Utils.Collections
-open Suave.RequestErrors
 open CrossTradedCryptos
 open TradingStrategy
 open HistoricalSpreadCalc
