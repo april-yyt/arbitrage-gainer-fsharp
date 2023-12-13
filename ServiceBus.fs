@@ -1,26 +1,44 @@
-open Azure.Messaging.ServiceBus
+open Azure
+open Azure.Data.Tables
 open Azure.Identity
 
-let namespace = "ArbitrageGainer.servicebus.windows.net"
+type OrderEntity() =
+    inherit TableEntity()
+    member val OrderID: string = null with get, set
+    member val Currency: string = null with get, set
+    member val Price: double = 0.0 with get, set
+    member val OrderType: string = null with get, set
+    member val Quantity: int = 0 with get, set
+    member val Exchange: string = null with get, set
+    member val Status: string = null with get, set
 
-let sendMessageAsync(queueName : string, messageContent: string) =
-    let client = ServiceBusClient(namespace, DefaultAzureCredential())
-    let sender = client.CreateSender(queueName)
-    let serviceBusMessage = new ServiceBusMessage(messageContent : string)
+let namespace = "YourTableStorageNamespace" 
+let tableServiceClient = TableServiceClient(namespace, DefaultAzureCredential())
 
-    sender.SendMessageAsync(serviceBusMessage).Wait()
+let tableName = "Orders"
+let tableClient = tableServiceClient.GetTableClient(tableName) 
 
-    sender.DisposeAsync().AsTask().Wait()
-    client.DisposeAsync().AsTask().Wait()
-        
-let receiveMessageAsync(queueName : string) =
-    let client = ServiceBusClient(namespace, DefaultAzureCredential())
-    let receiver = client.CreateReceiver(queueName)
-    let receivedMessage = receiver.ReceiveMessageAsync().Result
+// Function to create table if it does not exist
+let createTableIfNotExists () =
+    if not (tableServiceClient.QueryTables(tableName).Any()) then
+        tableServiceClient.CreateTable(tableName)
+    else
+        printfn "Table already exists"
 
-    receiver.DisposeAsync().AsTask().Wait()
-    client.DisposeAsync().AsTask().Wait()
+createTableIfNotExists() // Call this function at the start
 
-    match receivedMessage with
-    | null -> ""
-    | _ -> receivedMessage.Body.ToString()
+let addOrderToDatabase (order: OrderEntity) : bool =
+    let response = tableClient.AddEntity order
+    response.IsSucceeded
+
+let getOrderFromDatabase (partitionKey: string, rowKey: string) : OrderEntity option =
+    let response = tableClient.GetEntity<OrderEntity>(partitionKey, rowKey)
+    if response.IsSucceeded then Some(response.Value) else None
+
+let updateOrderInDatabase (order: OrderEntity) : bool =
+    let response = tableClient.UpdateEntity(order, ETag.All, TableUpdateMode.Replace)
+    response.IsSucceeded
+
+let deleteOrderFromDatabase (partitionKey: string, rowKey: string) : bool =
+    let response = tableClient.DeleteEntity(partitionKey, rowKey)
+    response.IsSucceeded
