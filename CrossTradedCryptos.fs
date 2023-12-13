@@ -97,7 +97,6 @@ let validateInputFiles (filenames: string seq) =
 let exchangeToFilename (exchange: string) =
     exchange + ".txt"
 
-
 let validateInputExchanges (exchanges: string seq) = 
     exchanges |> Seq.map exchangeToFilename
                 |> validateInputFiles
