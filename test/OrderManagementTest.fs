@@ -1,4 +1,4 @@
-module OrderManagement
+module OrderManagementTest
 
 open System
 open BenchmarkDotNet.Attributes
