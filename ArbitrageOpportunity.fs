@@ -438,7 +438,6 @@ let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) (tradingStrategy: Trading
                 match busmsg with
                 | "stop trading" ->
                     printfn "trading stop triggered"
-                    sendMessageAsync ("strategyqueue", "test stop 2")
                     pauseTrading
                 | _ -> None |> ignore
                 return! receiveMsgFromWSAndTrade ws tradingStrategy
@@ -469,7 +468,6 @@ let rec doRealTimeTrading () =
         match msg with
         | "stop trading" ->
             printfn "trading stop triggered"
-            sendMessageAsync ("strategyqueue", "test stop 2")
             pauseTrading
         | _ ->
             let! res = connectWebSocket

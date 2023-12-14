@@ -83,10 +83,8 @@ type NewDayBegan =
     { PrevDayDeactivated: TradingStrategyDeactivated option
       TradingStrategy: TradingStrategyParameters }
 
-// TODO: duplicate code; delete after integration with order management
-type OrderID = int
-type UpdateTransactionVolume = { OrderID: OrderID; TransactionVolume: float }
-type UpdateTransactionAmount = { OrderID: OrderID; TransactionAmount: float }
+
+type UpdateTransactionVolume = { OrderID: string; Quantity: float }
 
 // -------
 // Agents
@@ -146,35 +144,30 @@ let tradingStrategyAgent =
 // Workflows
 // ----------
 
-// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 4.
-let processNewTransactionVolume (updateTransactionVol: UpdateTransactionVolume) : TotalTransactionsAmountUpdated =
+// Helper for connecting the Order Management and Trading Strategy BCs.
+let processNewTransactionVolume (updateTransactionVol: UpdateTransactionVolume) : DailyTransactionsVolumeUpdated =
     {
-        TradeBookedValue = updateTransactionVol.TransactionVolume
-    }
-
-// Helper for connecting the Order Management and Trading Strategy BCs. This will be finessed for Milestone 4.
-let processNewTransactionAmount (updateTransactionAmt: UpdateTransactionAmount) : DailyTransactionsVolumeUpdated =
-    {
-        TradeBookedValue = updateTransactionAmt.TransactionAmount
+        TradeBookedValue = updateTransactionVol.Quantity
         DailyReset = false
     }
 
-// Processing an update to the transactions daily volume
-let updateTransactionsVolume (input: DailyTransactionsVolumeUpdated) : TradingStrategyDeactivated option =
-    let tradeBookedVolume = input.TradeBookedValue
-
-    match input.DailyReset with
-    | true ->
-        volumeAgent.Post(Reset)
-        None
-    | false ->
+let rec listenForVolumeUpdate () = 
+    async {
+        let msg = receiveMessageAsync "strategyqueue"
+        printfn "msg received from service bus: %A" msg
+        let volUpdate = JsonConvert.DeserializeObject<UpdateTransactionVolume>(msg)
+        let tradeBookedVolume = volUpdate.Quantity
         let dailyVol = volumeAgent.PostAndReply(CheckCurrentVolume)
         let maxVol = tradingStrategyAgent.PostAndReply(GetParams).MaxDailyVolume
         volumeAgent.Post(UpdateVolume(dailyVol + tradeBookedVolume))
-
         match dailyVol + tradeBookedVolume with
-        | x when x >= maxVol -> Some { Cause = MaximalDailyTransactionVolumeReached }
-        | _ -> None
+        | x when x >= maxVol -> // Halt trading when max volume has been reached
+            tradingStrategyAgent.Post(Deactivate)
+            sendMessageAsync("tradingqueue", "stop trading")
+        | _ -> ()
+        do! Async.Sleep(1000)
+        return! listenForVolumeUpdate ()
+    }
 
 // Processing a new trading strategy provided by the user
 let acceptNewTradingStrategy (input: TradingParametersInputed) =

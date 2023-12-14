@@ -18,8 +18,7 @@
 
 The trading strategy is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in [TradingStrategy.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs):
 
-- `updateTransactionsVolume` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L163)): processing an update to the transactions daily volume
-- `updateTransactionsAmount` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L180)): processing an update to the transactions total amount
+- `listenForVolumeUpdate`: Listens to service bus queue for an update to volume from the Order Management bounded context, and processes an update to the transactions daily volume
 - `acceptNewTradingStrategy` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L191)): process a new trading strategy provided by the user
 - `activateAcceptedTradingTrategy` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L204)): activate an accepted trading strategy for use in trading
 - `resetForNewDay` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L214)): the daily volume should be reset so as to accurately track whether the maximal daily volume is reached
@@ -200,3 +199,6 @@ We have classified the following functionalities in our system as domain service
       - stringified order details for creating orders
    - send message code pointer
    - receive message code pointer 
+- **[strategyqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/strategyqueue/explorer)**: connecting **OrderManagement** and **TradingStrategy** bounded contexts
+  - message type:
+    - stringified volume update details for an order
