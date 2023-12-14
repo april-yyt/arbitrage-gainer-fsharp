@@ -14,6 +14,7 @@ open System.Collections.Generic
 open BitfinexAPI
 open KrakenAPI
 open BitstampAPI
+open Email
 open FSharp.Data
 open ServiceBus
 
