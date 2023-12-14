@@ -19,6 +19,7 @@ let receiveMessageAsync(queueName : string) =
     let client = ServiceBusClient(ns, DefaultAzureCredential())
     let receiver = client.CreateReceiver(queueName)
     let receivedMessage = receiver.ReceiveMessageAsync().Result
+    receiver.CompleteMessageAsync(receivedMessage).Wait()
     receiver.DisposeAsync().AsTask().Wait()
     client.DisposeAsync().AsTask().Wait()
 

@@ -5,6 +5,8 @@ open Suave.Filters
 open Suave.Operators
 open CrossTradedCryptos
 open TradingStrategy
+open ArbitrageOpportunity
+open OrderManagement
 open HistoricalSpreadCalc
 
 let app =
@@ -21,6 +23,10 @@ let app =
 let main args =
     // For Docker testing
     // let cfg = { defaultConfig with bindings = [ HttpBinding.createSimple HTTP "0.0.0.0" 8080  ] }
+    async {
+        do! doRealTimeTrading ()
+    }
+    |> Async.Start
     let cfg = defaultConfig
     startWebServer cfg app
     0

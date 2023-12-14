@@ -278,6 +278,6 @@ let startTrading =
 let stopTrading =
     request (fun r ->
     tradingStrategyAgent.Post(Deactivate)
-    sendMessageAsync("tradingqueue", "Stop trading")
+    sendMessageAsync("tradingqueue", "stop trading")
     OK "Trading strategy deactivated"
     )

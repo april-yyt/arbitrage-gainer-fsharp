@@ -395,11 +395,18 @@ let writeOpportunitiesToFile (ops: OrderDetails list) =
     writer.Flush()
     writer.Close()
 
+// Workflow: Pause trading when trading strategy is deactivated
+let pauseTrading = 
+    tradingStatusAgent.Post(UpdateStatus false)
+
 // Helper that continuously receives market data from websocket and assess 
 // arbitrage opportunities when trading strategy is activated, 
 let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) (tradingStrategy: TradingStrategyParameters) = 
     async {
+        
+    
         let tradingStarted = tradingStatusAgent.PostAndReply(RetrieveStatus)
+        printfn "%A" tradingStarted
         match tradingStarted with
         | true ->
             let buffer = ArraySegment<byte>(Array.zeroCreate 2048)
@@ -426,6 +433,14 @@ let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) (tradingStrategy: Trading
                     // let msg = receiveMessageAsync "orderqueue"
                     let msg = JsonConvert.SerializeObject(orders)
                     printfn "%s" msg
+                let busmsg = receiveMessageAsync "tradingqueue"
+                printfn "msg received from service bus: %A" busmsg
+                match busmsg with
+                | "stop trading" ->
+                    printfn "trading stop triggered"
+                    sendMessageAsync ("strategyqueue", "test stop 2")
+                    pauseTrading
+                | _ -> None |> ignore
                 return! receiveMsgFromWSAndTrade ws tradingStrategy
             with 
             | ex -> 
@@ -444,30 +459,32 @@ let retrieveDataFromRealTimeFeedAndTrade (ws: ClientWebSocket) (strategy: Tradin
             return Error "WebSocket Message Reception Error"
     }
 
-
-// Workflow: Pause trading when trading strategy is deactivated
-let pauseTrading = 
-    tradingStatusAgent.Post(UpdateStatus false)
-
 // Main workflow: do real time trading
-let doRealTimeTrading = 
+let rec doRealTimeTrading () = 
     async {
         // receive messages from Trading Strategy Bounded Context, 
         // which will either be "stop trading", or stringified trading strategy 
         let msg = receiveMessageAsync "tradingqueue"
+        printfn "msg received from service bus: %A" msg
         match msg with
         | "stop trading" ->
+            printfn "trading stop triggered"
+            sendMessageAsync ("strategyqueue", "test stop 2")
             pauseTrading
         | _ ->
             let! res = connectWebSocket
             match res with
             | Ok ws -> 
+                printfn "trading start triggered"
                 tradingStatusAgent.Post(UpdateStatus true)
                 let tradingStrategy = JsonConvert.DeserializeObject<TradingStrategyParameters>(msg)
                 let! res = retrieveDataFromRealTimeFeedAndTrade ws tradingStrategy
                 res |> ignore
             | Error errstr -> Error errstr |> ignore
+        do! Async.Sleep(1000)
+        return! doRealTimeTrading ()
     }
+
     
 
 
