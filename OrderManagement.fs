@@ -1,4 +1,4 @@
-module OrderManagementTest
+module OrderManagement
 
 open Azure
 open Azure.Data.Tables

@@ -27,6 +27,14 @@ let main args =
         do! doRealTimeTrading ()
     }
     |> Async.Start
+    async {
+        do! listenForVolumeUpdate ()
+    }
+    |> Async.Start
+    async {
+        do! receiveAndProcessOrders ()
+    }
+    |> Async.Start
     let cfg = defaultConfig
     startWebServer cfg app
     0

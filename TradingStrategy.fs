@@ -84,7 +84,7 @@ type NewDayBegan =
       TradingStrategy: TradingStrategyParameters }
 
 
-type UpdateTransactionVolume = { OrderID: string; Quantity: float }
+type UpdateTransactionVolume = { OrderID: OrderID; Quantity: float }
 
 // -------
 // Agents
