@@ -255,6 +255,19 @@ let processBitstampResponse (jsonString: string) : Result<OrderStatusUpdate, str
         Result.Error errMsg
 
 
+
+let random = Random()
+let generateRandomID (length: int) (isNumeric: bool) =
+    let chars = if isNumeric then "0123456789" else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let randomChars = Array.init length (fun _ -> chars.[random.Next(chars.Length)])
+    String(randomChars)
+let getOrderID (orderDetails: OrderDetails) : OrderID =
+    match orderDetails.Exchange with
+    | "Kraken" -> StringOrderID (generateRandomID 15 false) 
+    | "Bitstamp" -> StringOrderID (generateRandomID 4 true) 
+    | "Bitfinex" -> StringOrderID (generateRandomID 9 true) 
+    | _ -> StringOrderID "Unknown"
+
 // -------------------------
 // Main Workflows
 // -------------------------
@@ -432,36 +445,38 @@ let runOrderManagement () =
         sendMessageAsync ("tradingqueue", messageContent)
     )
 
-// [<TestFixture>]
-// type OrderManagementTests() =
+// Function to receive and process orders from "orderqueue"
+let receiveAndProcessOrders () =
+    async {
+        printfn "Waiting for message from 'orderqueue'..."
+        let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+        // let! receivedMessageJson = receiveMessageAsync "orderqueue" |> Async.AwaitTask
+        printfn "Received message: %s" receivedMessageJson
+        if String.IsNullOrEmpty receivedMessageJson then
+            printfn "No message received from 'orderqueue'."
+        else
+            try
+                let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+                ordersEmitted |> List.iter (fun orderDetails ->
+                    let orderID = getOrderID orderDetails
+                    // let messageContent = JsonConvert.SerializeObject({ OrderID = orderID; Quantity = orderDetails.Quantity })
+                    let messageContent = sprintf "OrderID: %A, Quantity: %f" orderID orderDetails.Quantity
+                    printfn "Sending message: %s" messageContent
+                    sendMessageAsync ("strategyqueue", messageContent)
+                )
+            with
+            | ex ->
+                printfn "An exception occurred: %s" ex.Message
+    }
 
-//     // [<Test>]
-//     // member this.``Bitfinex Order Creation and Processing Test`` () =
-//     //     let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitfinex" }
-//     //     let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//     //     Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Kraken Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Kraken" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Bitstamp Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitstamp" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Run Test`` () =
-//         runOrderManagement ()
-
-    // <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
+// Function to run the order receiver workflow
+let runOrderReceiver () =
+    Async.RunSynchronously (receiveAndProcessOrders ())
 
 
 // [<EntryPoint>]
 // let main arg =
-//     runOrderManagement ()
+//     sendMessageAsync ("orderqueue", testing_Orders)
+//     runOrderReceiver ()
 //     // sendMessageAsync ("orderqueue", "testing orders")
 //     0 
