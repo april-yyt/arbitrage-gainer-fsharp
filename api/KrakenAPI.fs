@@ -21,25 +21,18 @@ type KrakenSubmitResponse = {
 type OrderDescription = {
     [<JsonProperty("pair")>]
     Pair: string
-
     [<JsonProperty("type")>]
     OrderType: string
-
     [<JsonProperty("ordertype")>]
     Ordertype: string
-
     [<JsonProperty("price")>]
     Price: string
-
     [<JsonProperty("price2")>]
     Price2: string
-
     [<JsonProperty("leverage")>]
     Leverage: string
-
     [<JsonProperty("order")>]
     Order: string
-
     [<JsonProperty("close")>]
     Close: string
 }
@@ -47,61 +40,42 @@ type OrderDescription = {
 type OrderInfo = {
     [<JsonProperty("refid")>]
     Refid: string
-
     [<JsonProperty("userref")>]
     Userref: int
-
     [<JsonProperty("status")>]
     Status: string
-
     [<JsonProperty("reason")>]
     Reason: string option
-
     [<JsonProperty("opentm")>]
     Opentm: float
-
     [<JsonProperty("closetm")>]
     Closetm: float
-
     [<JsonProperty("starttm")>]
     Starttm: int
-
     [<JsonProperty("expiretm")>]
     Expiretm: int
-
     [<JsonProperty("descr")>]
     Descr: OrderDescription
-
     [<JsonProperty("vol")>]
     Vol: string
-
     [<JsonProperty("vol_exec")>]
     Vol_exec: string
-
     [<JsonProperty("cost")>]
     Cost: string
-
     [<JsonProperty("fee")>]
     Fee: string
-
     [<JsonProperty("price")>]
     Price: string
-
     [<JsonProperty("stopprice")>]
     Stopprice: string
-
     [<JsonProperty("limitprice")>]
     Limitprice: string
-
     [<JsonProperty("misc")>]
     Misc: string
-
     [<JsonProperty("oflags")>]
     Oflags: string
-
     [<JsonProperty("trigger")>]
     Trigger: string
-
     [<JsonProperty("trades")>]
     Trades: string[]
 }
@@ -109,7 +83,6 @@ type OrderInfo = {
 type KrakenOrderResponse = {
     [<JsonProperty("error")>]
     Error: string[]
-
     [<JsonProperty("result")>]
     Result: Map<string, OrderInfo>
 }
