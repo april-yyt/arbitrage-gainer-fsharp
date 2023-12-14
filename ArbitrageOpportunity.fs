@@ -11,6 +11,7 @@ open Newtonsoft.Json
 open ServiceBus
 open Azure
 open Azure.Data.Tables
+open System.IO
 
 let wsUrl = "wss://one8656-live-data.onrender.com"
 let apiKey = "qC2Ix1WnmcpTMRP2TqQ8hVZsxihJq7Hq"
@@ -383,6 +384,17 @@ let assessRealTimeArbitrageOpportunity (marketDataRetrieved: MarketDataRetrieved
         acc @ orders
     ) []
 
+// Helper to output arbitrage opportunities to a txt file
+let writeOpportunitiesToFile (ops: OrderDetails list) =
+    let writer = new StreamWriter("identifiedArbitrageOpportunities.txt", false)
+    ops
+    |> List.iter (fun op ->
+        let text = JsonConvert.SerializeObject(op)
+        writer.WriteLine text
+        )
+    writer.Flush()
+    writer.Close()
+
 // Helper that continuously receives market data from websocket and assess 
 // arbitrage opportunities when trading strategy is activated, 
 let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) (tradingStrategy: TradingStrategyParameters) = 
@@ -405,6 +417,7 @@ let rec receiveMsgFromWSAndTrade (ws: ClientWebSocket) (tradingStrategy: Trading
                 // assess arbitrage opportunity for all quotes 
                 let retrievedMarketData = {Quotes = quotes; TradingStrategy = tradingStrategy}
                 let orders = assessRealTimeArbitrageOpportunity retrievedMarketData
+                writeOpportunitiesToFile orders
                 match List.length orders with
                 | 0 -> None
                 | _ ->
