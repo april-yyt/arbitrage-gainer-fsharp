@@ -290,6 +290,20 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | false ->
                 Result.Error "Failed to update order in database"
 
+        let handleStatusUpdate orderStatusUpdate =
+            match orderStatusUpdate.FulfillmentStatus with
+            | FullyFulfilled ->
+                updateOrderInDatabase orderStatusUpdate
+            | PartiallyFulfilled ->
+                let newOrderDetails = { orderDetails with Quantity = orderStatusUpdate.RemainingQuantity }
+                createOrderAsync newOrderDetails |> Async.Ignore
+                Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = FullyFulfilled; RemainingQuantity = 0.0 })
+            | OneSideFilled ->
+                updateOrderInDatabase orderStatusUpdate
+                sendEmailAsync "Your order was only partially filled." |> Async.Ignore
+                Result.Ok (UserNotificationSent orderID)
+
+
                     // let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
         match orderDetails.Exchange with
         | "Bitfinex" ->
@@ -298,8 +312,7 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | Some bitfinexResponse ->
                 match processBitfinexResponse bitfinexResponse orderDetails.Quantity with
                 | Result.Ok orderStatusUpdate ->
-                    // return updateOrderInDatabase orderStatusUpdate
-                    return Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = orderStatusUpdate.FulfillmentStatus; RemainingQuantity = orderStatusUpdate.RemainingQuantity })
+                    handleStatusUpdate orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
@@ -311,8 +324,7 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | Some response ->
                 match processKrakenResponse response with
                 | Result.Ok orderStatusUpdate ->
-                    // return updateOrderInDatabase orderStatusUpdate
-                    return Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = orderStatusUpdate.FulfillmentStatus; RemainingQuantity = orderStatusUpdate.RemainingQuantity })
+                    handleStatusUpdate orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
@@ -324,8 +336,7 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
             | Some response ->
                 match processBitstampResponse response with
                 | Result.Ok orderStatusUpdate ->
-                    // return updateOrderInDatabase orderStatusUpdate
-                    return Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = orderStatusUpdate.FulfillmentStatus; RemainingQuantity = orderStatusUpdate.RemainingQuantity })
+                    handleStatusUpdate orderStatusUpdate
                 | Result.Error errMsg ->
                     return Result.Error errMsg
             | None ->
