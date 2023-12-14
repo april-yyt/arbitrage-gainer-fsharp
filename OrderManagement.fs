@@ -95,20 +95,20 @@ type OrderEntity(orderID: OrderID, currency: Currency, price: Price, orderType: 
 // DB Operations
 // --------------------------
 
-let addOrder (orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
-    let order = OrderEntity(orderID, currency, price, orderType, quantity, exchange, status, remainingQuantity)
-    try
-        table.AddEntity(order) |> ignore
-        true 
-    with
-    | :? Azure.RequestFailedException as ex -> 
-        printfn "Error adding order: %s" ex.Message
-        false 
+// let addOrder (orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
+//     let order = OrderEntity(orderID, currency, price, orderType, quantity, exchange, status, remainingQuantity)
+//     try
+//         table.AddEntity(order) |> ignore
+//         true 
+//     with
+//     | :? Azure.RequestFailedException as ex -> 
+//         printfn "Error adding order: %s" ex.Message
+//         false 
 
 
-let order1 = addOrder (StringOrderID "Order001", "BTCUSD", 10000.0, Buy, 1.0, "Bitfinex", OneSideFilled, 1.0)
-let order2 = addOrder (StringOrderID "Order002", "ETHUSD", 500.0, Sell, 10.0, "Kraken", PartiallyFulfilled, 5.0)
-let order3 = addOrder (StringOrderID "Order003", "LTCUSD", 150.0, Buy, 20.0, "Bitstamp", FullyFulfilled, 0.0)
+// let order1 = addOrder (StringOrderID "Order001", "BTCUSD", 10000.0, Buy, 1.0, "Bitfinex", OneSideFilled, 1.0)
+// let order2 = addOrder (StringOrderID "Order002", "ETHUSD", 500.0, Sell, 10.0, "Kraken", PartiallyFulfilled, 5.0)
+// let order3 = addOrder (StringOrderID "Order003", "LTCUSD", 150.0, Buy, 20.0, "Bitstamp", FullyFulfilled, 0.0)
 
 
 let addOrderToDatabase (orderDetails: OrderDetails, orderID: OrderID) : bool =
@@ -411,3 +411,31 @@ let runOrderManagement () =
 // let main argv =
 //     runOrderManagement ()
 //     0 // Return an integer exit code
+
+
+// for testing
+// [<TestFixture>]
+// type OrderManagementTests() =
+
+//     // [<Test>]
+//     // member this.``Bitfinex Order Creation and Processing Test`` () =
+//     //     let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitfinex" }
+//     //     let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
+//     //     Assert.IsNotNull(result)
+
+//     [<Test>]
+//     member this.``Kraken Order Creation and Processing Test`` () =
+//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Kraken" }
+//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
+//         Assert.IsNotNull(result)
+
+//     [<Test>]
+//     member this.``Bitstamp Order Creation and Processing Test`` () =
+//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitstamp" }
+//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
+//         Assert.IsNotNull(result)
+
+//     [<Test>]
+//     member this.``Run Test`` () =
+//         runOrderManagement ()
+
