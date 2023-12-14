@@ -1,4 +1,4 @@
-module OrderManagement
+module OrderManagementTest
 
 open Azure
 open Azure.Data.Tables
@@ -78,8 +78,6 @@ type OrderEntity(orderID: OrderID, currency: Currency, price: Price, orderType: 
         member val ETag = ETag "" with get, set
         member val PartitionKey = "" with get, set
         member val RowKey = "" with get, set
-        // member val PartitionKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
-        // member val RowKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
         member val Timestamp = Nullable() with get, set
     new() = OrderEntity(StringOrderID(""), "", 0.0, Buy, 0.0, "", FullyFulfilled, 0.0)
     member val OrderID = orderID with get, set
@@ -383,22 +381,26 @@ let sendOrderMessage (queueName: string) (orderUpdate: Event) =
     Result.Ok ()
 
 
-
-// Define your example order list here
 let exampleOrders : OrderEmitted = [
     { Currency = "BTCUSD"; Price = 10000.0; OrderType = Buy; Quantity = 1.0; Exchange = "Bitfinex" }
     { Currency = "ETHUSD"; Price = 500.0; OrderType = Sell; Quantity = 10.0; Exchange = "Kraken" }
     { Currency = "LTCUSD"; Price = 150.0; OrderType = Buy; Quantity = 20.0; Exchange = "Bitstamp" }
 ]
 
+let getOrderID (orderDetails: OrderDetails) : OrderID =
+    match orderDetails.Exchange with
+    | "Kraken" -> StringOrderID "OU22CG-KLAF2-FWUDD7"
+    | "Bitstamp" -> StringOrderID "1234"
+    | "Bitfinex" -> StringOrderID "174756642"
+    | _ -> StringOrderID "Unknown"
 
-// Main function to create and process orders, and send messages
-let runOrderManagement () =
+// Main entry point function
+let runOrders () =
     let ordersEmitted = exampleOrders
     let result = createAndProcessOrders ordersEmitted |> Async.RunSynchronously
     match result with
     | Result.Ok orderUpdate ->
-        match sendOrderMessage "tradingqueue" orderUpdate with
+        match sendOrderMessage "strategyqueue" orderUpdate with
         | Result.Ok _ ->
             Console.WriteLine("Orders processed successfully, and message sent.")
         | Result.Error errMsg ->
@@ -406,14 +408,18 @@ let runOrderManagement () =
     | Result.Error errMsg ->
         Console.WriteLine("Error processing orders: " + errMsg)
 
-// // Entry point
-// [<EntryPoint>]
-// let main argv =
-//     runOrderManagement ()
-//     0 // Return an integer exit code
 
+// testing main, takes in ordersEmitted, sends message to the queue
+let runOrderManagement () =
+    let ordersEmitted = exampleOrders
+    printfn "Orders emitted: %A" ordersEmitted
+    // iter thru the orders
+    ordersEmitted |> List.iter (fun orderDetails ->
+        let orderID = getOrderID orderDetails
+        let messageContent = sprintf "OrderID: %A, Quantity: %f" orderID orderDetails.Quantity
+        sendMessageAsync ("tradingqueue", messageContent)
+    )
 
-// for testing
 // [<TestFixture>]
 // type OrderManagementTests() =
 
@@ -439,3 +445,11 @@ let runOrderManagement () =
 //     member this.``Run Test`` () =
 //         runOrderManagement ()
 
+    // <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
+
+
+// [<EntryPoint>]
+// let main arg =
+//     runOrderManagement ()
+//     // sendMessageAsync ("orderqueue", "testing orders")
+//     0 
