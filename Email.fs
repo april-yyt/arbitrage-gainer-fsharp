@@ -1,3 +1,5 @@
+module Email
+
 open System.Threading
 open SendGrid
 open SendGrid.Helpers.Mail
@@ -32,8 +34,3 @@ let checkForMessagesAsync (queueName: string) =
         receiver.DisposeAsync().AsTask().Wait()
         client.DisposeAsync().AsTask().Wait()
     }
-
-[<EntryPoint>]
-let main argv =
-    checkForMessagesAsync "out_queue" |> Async.RunSynchronously
-    0
