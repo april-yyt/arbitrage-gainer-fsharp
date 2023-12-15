@@ -16,6 +16,12 @@ open KrakenAPI
 open BitstampAPI
 open FSharp.Data
 open ServiceBus
+open FSharp.CloudAgent
+open FSharp.CloudAgent.Messaging
+open FSharp.CloudAgent.Connections
+open System.Threading.Tasks
+open Azure.Messaging.ServiceBus
+
 
 
 // -------------------------
@@ -429,7 +435,6 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<OrderUpd
     }
 
 
-
 let sendOrderMessage (queueName: string) (orderUpdate: Event) =
     let json = JsonConvert.SerializeObject(orderUpdate)
     sendMessageAsync(queueName, json)
@@ -487,30 +492,13 @@ let runOrderManagement (ordersEmitted: OrderEmitted) =
             handleOrder orderDetails id
     )
     
-// Function to receive and process orders from "orderqueue"
-// // Old Version of Receiving and Processing Orders
-// let rec receiveAndProcessOrders () =
-//     async {
-//         printfn "Waiting for message from 'orderqueue'..."
-//         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
-//         printfn "Received message: %s" receivedMessageJson
-//         if String.IsNullOrEmpty receivedMessageJson then
-//             printfn "No message received from 'orderqueue'."
-//         else
-//             try
-//                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
-//                 runOrderManagement ordersEmitted
-//             with
-//             | ex ->
-//                 printfn "An exception occurred: %s" ex.Message
-//     }
 
 // Implementation of MailBox Agent
 type OrderMessage = 
     | ProcessOrders of OrderEmitted
     | Stop
 
-let orderAgent = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+let orderAgentBasic = MailboxProcessor<OrderMessage>.Start(fun inbox ->
     let rec messageLoop () = async {
         let! msg = inbox.Receive()
         match msg with
@@ -523,7 +511,9 @@ let orderAgent = MailboxProcessor<OrderMessage>.Start(fun inbox ->
     messageLoop()
 )
 
-let rec receiveAndProcessOrders () =
+// Basic Version of Receiving and Processing Orders
+// Recursive Function to receive and process orders from "orderqueue"
+let rec receiveAndProcessOrdersBasic () =
     async {
         printfn "Waiting for message from 'orderqueue'..."
         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
@@ -531,22 +521,24 @@ let rec receiveAndProcessOrders () =
         if not (String.IsNullOrEmpty receivedMessageJson) then
             try
                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
-                orderAgent.Post(ProcessOrders ordersEmitted)
+                orderAgentBasic.Post(ProcessOrders ordersEmitted)
             with
             | ex ->
                 printfn "An exception occurred: %s" ex.Message
     }
 
 
-[<EntryPoint>]
-let main arg =
+// [<EntryPoint>]
+// let main arg =
 
-    async {
-        do! receiveAndProcessOrders ()
-    } |> Async.Start
+//     async {
+//         do! receiveAndProcessOrdersBasic ()
+//     } |> Async.Start
+    
 
-    printfn "Press any key to exit..."
-    Console.ReadKey() |> ignore
-    orderAgent.Post(Stop)
-    0
+//     printfn "Press any key to exit..."
+//     Console.ReadKey() |> ignore
+//     0
+    
+    
     
