@@ -32,7 +32,28 @@ In order to adapt our current MailboxProcessors to a distributed cloud environme
     ```
     ConnectionFactory.StartListening(cloudConn, distributedAgent >> BasicCloudAgent)
     ```
-The second part of the arguments to StartListening (`activationAgent >> BasicCloudAgent`)
+    The second part of the arguments to StartListening (`activationAgent >> BasicCloudAgent`) is how the new agents are created and piped to a new BasicCloudAgent. 
+
+5. Reimplement message sending to be compatible with this new distributed agent:
+    ```
+    let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
+    ```
+    Essentially, this replaces the MailboxProcessor agents' `post`, and instead sends the message it takes as an input to the WorkerPool through the cloud connection. Once the message is received in the queue, a new agent will be created to process it.
+
+6. Replace calls to `post` with `distributedPost`. 
+
+    Example before:
+    ```
+    match dailyVol + tradeBookedVolume with
+        | x when x >= maxVol -> // Halt trading when max volume has been reached
+            tradingStrategyAgent.Post(Deactivate)
+    ```
+    Example after:
+    ```
+    match dailyVol + tradeBookedVolume with
+        | x when x >= maxVol -> // Halt trading when max volume has been reached
+            distributedPost Deactivate
+    ```
 
 
 ## Issues
