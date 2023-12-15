@@ -58,3 +58,5 @@ In order to adapt our current MailboxProcessors to a distributed cloud environme
 
 ## Issues
 - The build ended up failing due to compatibility issues of FSharp.CloudAgent, System.ServiceModel, and .NET 6.0, which meant we could not test our solution.
+
+## Code locations
