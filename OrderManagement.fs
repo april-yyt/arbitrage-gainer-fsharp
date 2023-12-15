@@ -488,51 +488,65 @@ let runOrderManagement (ordersEmitted: OrderEmitted) =
     )
     
 // Function to receive and process orders from "orderqueue"
+// // Old Version of Receiving and Processing Orders
+// let rec receiveAndProcessOrders () =
+//     async {
+//         printfn "Waiting for message from 'orderqueue'..."
+//         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+//         printfn "Received message: %s" receivedMessageJson
+//         if String.IsNullOrEmpty receivedMessageJson then
+//             printfn "No message received from 'orderqueue'."
+//         else
+//             try
+//                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+//                 runOrderManagement ordersEmitted
+//             with
+//             | ex ->
+//                 printfn "An exception occurred: %s" ex.Message
+//     }
+
+// Implementation of MailBox Agent
+type OrderMessage = 
+    | ProcessOrders of OrderEmitted
+    | Stop
+
+let orderAgent = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+    let rec messageLoop () = async {
+        let! msg = inbox.Receive()
+        match msg with
+        | ProcessOrders ordersEmitted ->
+            runOrderManagement ordersEmitted
+            return! messageLoop()
+        | Stop ->
+            printfn "Stopping order processing agent."
+    }
+    messageLoop()
+)
+
 let rec receiveAndProcessOrders () =
     async {
         printfn "Waiting for message from 'orderqueue'..."
         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
         printfn "Received message: %s" receivedMessageJson
-        if String.IsNullOrEmpty receivedMessageJson then
-            printfn "No message received from 'orderqueue'."
-        else
+        if not (String.IsNullOrEmpty receivedMessageJson) then
             try
                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
-                runOrderManagement ordersEmitted
+                orderAgent.Post(ProcessOrders ordersEmitted)
             with
             | ex ->
                 printfn "An exception occurred: %s" ex.Message
     }
 
-// [<EntryPoint>]
-// let main arg =
-//     runOrderManagementTesting ()
-//     0 
 
+[<EntryPoint>]
+let main arg =
 
-// [<TestFixture>]
-// type OrderManagementTests() =
+    async {
+        do! receiveAndProcessOrders ()
+    } |> Async.Start
 
-//     // [<Test>]
-//     // member this.``Bitfinex Order Creation and Processing Test`` () =
-//     //     let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitfinex" }
-//     //     let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//     //     Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Kraken Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Kraken" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Bitstamp Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitstamp" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Run Test`` () =
-//         runOrderManagement ()
-
-    // <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />·
+    printfn "Press any key to exit..."
+    Console.ReadKey() |> ignore
+    orderAgent.Post(Stop)
+    0
+    
