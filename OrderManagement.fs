@@ -14,9 +14,14 @@ open System.Collections.Generic
 open BitfinexAPI
 open KrakenAPI
 open BitstampAPI
-// open Email
 open FSharp.Data
 open ServiceBus
+open FSharp.CloudAgent
+open FSharp.CloudAgent.Messaging
+open FSharp.CloudAgent.Connections
+open System.Threading.Tasks
+open Azure.Messaging.ServiceBus
+
 
 
 // -------------------------
@@ -29,15 +34,10 @@ type Price = float
 type OrderType = string
 type Quantity = float
 type Exchange = string
-type OrderID = IntOrderID of int | StringOrderID of string
-
-type FulfillmentStatus = 
-    | FullyFulfilled
-    | PartiallyFulfilled
-    | OneSideFilled
-
-
-type OrderDetails = {
+type OrderID = string
+type FulfillmentStatus = string
+    
+type OrderDetails = { 
     Currency: Currency
     Price: Price
     OrderType: OrderType
@@ -78,10 +78,10 @@ table.CreateIfNotExists () |> ignore
 type OrderEntity(orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
     interface ITableEntity with
         member val ETag = ETag "" with get, set
-        member val PartitionKey = "" with get, set
-        member val RowKey = "" with get, set
+        member val PartitionKey = exchange with get, set
+        member val RowKey = orderID with get, set
         member val Timestamp = Nullable() with get, set
-    new() = OrderEntity(StringOrderID(""), "", 0.0, "Buy", 0.0, "", FullyFulfilled, 0.0)
+    new() = OrderEntity("", "", 0.0, "Buy", 0.0, "", "FullyFulfilled", 0.0)
     member val OrderID = orderID with get, set
     member val Currency = currency with get, set
     member val Price = price with get, set
@@ -95,25 +95,9 @@ type OrderEntity(orderID: OrderID, currency: Currency, price: Price, orderType: 
 // DB Operations
 // --------------------------
 
-// let addOrder (orderID: OrderID, currency: Currency, price: Price, orderType: OrderType, quantity: Quantity, exchange: Exchange, status: FulfillmentStatus, remainingQuantity: Quantity) =
-//     let order = OrderEntity(orderID, currency, price, orderType, quantity, exchange, status, remainingQuantity)
-//     try
-//         table.AddEntity(order) |> ignore
-//         true 
-//     with
-//     | :? Azure.RequestFailedException as ex -> 
-//         printfn "Error adding order: %s" ex.Message
-//         false 
-
-
-// let order1 = addOrder (StringOrderID "Order001", "BTCUSD", 10000.0, Buy, 1.0, "Bitfinex", OneSideFilled, 1.0)
-// let order2 = addOrder (StringOrderID "Order002", "ETHUSD", 500.0, Sell, 10.0, "Kraken", PartiallyFulfilled, 5.0)
-// let order3 = addOrder (StringOrderID "Order003", "LTCUSD", 150.0, Buy, 20.0, "Bitstamp", FullyFulfilled, 0.0)
-
-
 let addOrderToDatabase (orderDetails: OrderDetails, orderID: OrderID) : bool =
     table.CreateIfNotExists() |> ignore
-    let order = OrderEntity(orderID, orderDetails.Currency, orderDetails.Price, orderDetails.OrderType, orderDetails.Quantity, orderDetails.Exchange, OneSideFilled, orderDetails.Quantity)
+    let order = OrderEntity(orderID, orderDetails.Currency, orderDetails.Price, orderDetails.OrderType, orderDetails.Quantity, orderDetails.Exchange, "OneSideFilled", orderDetails.Quantity)
     try
         table.AddEntity(order) |> ignore
         true 
@@ -123,9 +107,9 @@ let addOrderToDatabase (orderDetails: OrderDetails, orderID: OrderID) : bool =
         false 
 
 
-let updateOrderStatus (orderID: OrderID, newStatus: FulfillmentStatus, remainingQuantity: Quantity) : bool =
-    let partitionKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
-    let rowKey = match orderID with | IntOrderID id -> id.ToString() | StringOrderID id -> id
+let updateOrderStatus (exchange: Exchange, orderID: OrderID, newStatus: FulfillmentStatus, remainingQuantity: Quantity) : bool =
+    let partitionKey = match exchange with | exchange -> exchange.ToString() 
+    let rowKey = match orderID with | id -> id.ToString() 
     try
         let response = table.GetEntity<OrderEntity>(partitionKey, rowKey)
         let entity = response.Value
@@ -143,7 +127,56 @@ let updateOrderStatus (orderID: OrderID, newStatus: FulfillmentStatus, remaining
 // Helper Function Definitions
 // -------------------------
 
+// Helper Functions for Creating Testing OrderIDs
+let random = Random()
+let generateRandomID (length: int) (isNumeric: bool) =
+    let chars = if isNumeric then "0123456789" else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let randomChars = Array.init length (fun _ -> chars.[random.Next(chars.Length)])
+    String(randomChars)
+    
+let generateRandomFulfillmentStatus () =
+    let statuses = ["FullyFulfilled"; "PartiallyFulfilled"; "OneSideFilled"]
+    let index = random.Next(statuses.Length)
+    statuses.[index]
+    
+let generateRandomRemainingQuantity (status: string) (maxQuantity: float) =
+    match status with
+    | "FullyFulfilled" -> 0.0
+    | "PartiallyFulfilled" -> random.NextDouble() * maxQuantity
+    | "OneSideFilled" -> maxQuantity
+    | _ -> maxQuantity
+    
+let createOrderTesting (orderDetails: OrderDetails) : OrderID =
+    match orderDetails.Exchange with
+    | "Kraken" -> generateRandomID 15 false
+    | "Bitstamp" -> generateRandomID 4 true
+    | "Bitfinex" -> generateRandomID 9 true
+    | _ -> "010101010"
+
+
+let processOrderUpdateTesting (orderID: OrderID) (orderDetails: OrderDetails) : Async<Result<OrderStatusUpdate, string>> =
+    async {
+        printfn "Order update retrieval"
+        do! Async.Sleep(3000)
+
+        let simulatedFulfillmentStatus = generateRandomFulfillmentStatus ()
+        let simulatedRemainingQuantity = generateRandomRemainingQuantity simulatedFulfillmentStatus orderDetails.Quantity
+
+        let updateResult = updateOrderStatus (orderDetails.Exchange, orderID, simulatedFulfillmentStatus, simulatedRemainingQuantity)
+        if updateResult then
+            printfn "Order status updated in database"
+            let orderStatusUpdate = {
+                FulfillmentStatus = simulatedFulfillmentStatus
+                RemainingQuantity = simulatedRemainingQuantity
+            }
+            return Result.Ok orderStatusUpdate
+        else
+            return Result.Error "Failed to update order in database"
+    }
+
+
 // Helper Function for submitting a new order on an exchange
+// Involves Making API Calls and Parsing Data
 let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     async {
         try 
@@ -157,15 +190,18 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
                     let result = BitfinexAPI.parseBitfinexResponse responseString
                     match result with
                     | Result.Ok orderID ->
-                        printfn "Order ID: %d" orderID
-                        return Result.Ok (IntOrderID orderID)
+                        let orderIDResult = orderID.ToString()
+                        printfn "Order ID: %s" orderIDResult
+                        return Result.Ok orderIDResult
                     | Result.Error errMsg ->
                         printfn "Error: %s" errMsg
                         return Result.Error errMsg
                 | None ->
                     return Result.Error "Failed to submit order to Bitfinex"
 
-            | "Kraken" -> 
+            | "Kraken" ->
+                printfn "processing kraken"
+                printfn "pair %A" orderDetails.Currency
                 let orderType = "market"
                 let pair = "XX" + orderDetails.Currency
                 let orderResult = KrakenAPI.submitOrder pair orderType (orderDetails.Quantity.ToString()) (orderDetails.Price.ToString()) |> Async.RunSynchronously
@@ -175,7 +211,7 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
                     match result with
                     | Result.Ok txid ->
                         printfn "Transaction ID: %s" txid
-                        return Result.Ok (StringOrderID txid)
+                        return Result.Ok txid
                     | Result.Error errMsg ->
                         printfn "Error: %s" errMsg
                         return Result.Error errMsg
@@ -190,7 +226,7 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
                 match orderResult with
                 | Some responseString ->
                     printfn "Response from Bitstamp: %s" responseString
-                    return Result.Ok (StringOrderID responseString)
+                    return Result.Ok responseString
                 | None ->
                     return Result.Error "Failed to submit order to Bitstamp"
 
@@ -201,8 +237,6 @@ let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
             return Result.Error (sprintf "An exception occurred: %s" ex.Message)
     }
 
-
-
 // Helper function to parse Bitfinex response and store in database
 let processBitfinexResponse (jsonString: string) (originalOrderQuantity: float) : Result<OrderStatusUpdate, string> =
     // passing in the response and historical order amt to compare and match execution status
@@ -211,9 +245,9 @@ let processBitfinexResponse (jsonString: string) (originalOrderQuantity: float) 
         let remainingAmount = originalOrderQuantity - executedAmount
         let statusUpdate = {
             FulfillmentStatus = 
-                if executedAmount = originalOrderQuantity then FullyFulfilled
-                elif executedAmount > 0.0 then PartiallyFulfilled
-                else OneSideFilled
+                if executedAmount = originalOrderQuantity then "FullyFulfilled"
+                elif executedAmount > 0.0 then "PartiallyFulfilled"
+                else "OneSideFilled"
             RemainingQuantity = remainingAmount
         }
         Result.Ok statusUpdate
@@ -229,9 +263,9 @@ let processKrakenResponse (jsonString: string) : Result<OrderStatusUpdate, strin
         let remainingAmount = volFloat - volExecFloat
         let statusUpdate = {
             FulfillmentStatus = 
-                if volExecFloat >= volFloat then FullyFulfilled
-                else if volExecFloat > 0.0 then PartiallyFulfilled
-                else OneSideFilled
+                if volExecFloat >= volFloat then "FullyFulfilled"
+                else if volExecFloat > 0.0 then "PartiallyFulfilled"
+                else "OneSideFilled"
             RemainingQuantity = remainingAmount
         }
         Result.Ok statusUpdate
@@ -246,9 +280,9 @@ let processBitstampResponse (jsonString: string) : Result<OrderStatusUpdate, str
         let amountRemaining = float orderResponse.AmountRemaining
         let statusUpdate = {
             FulfillmentStatus = 
-                if amountRemaining = 0.0 then FullyFulfilled
-                else if amountRemaining > 0.0 then PartiallyFulfilled
-                else OneSideFilled
+                if amountRemaining = 0.0 then "FullyFulfilled"
+                else if amountRemaining > 0.0 then "PartiallyFulfilled"
+                else "OneSideFilled"
             RemainingQuantity = amountRemaining
         }
         Result.Ok statusUpdate
@@ -260,8 +294,7 @@ let processBitstampResponse (jsonString: string) : Result<OrderStatusUpdate, str
 // Main Workflows
 // -------------------------
 
-// should contain submitting order to exchange and storing order info in db
-// temporarily removing db operations
+// Workflow: Submitting Order to Exchange and Persisting the Orders in DataBase
 let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> =
     async {
         let! result = submitOrderAsync orderDetails
@@ -269,7 +302,8 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
         | Result.Ok orderID ->
             // return Result.Ok orderID
             // Database operation to store order details in db
-            match addOrderToDatabase (orderDetails, orderID) with
+            let dbResult = addOrderToDatabase (orderDetails, orderID) 
+            match dbResult with
             | true -> 
                 return Result.Ok orderID
             | false ->
@@ -279,14 +313,15 @@ let createOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string
     }
 
 
-// Workflow: Retrieve and handle Order Updates
+// Workflow: Retrieve and Handle Order Updates
 let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<Result<Event, string>> =
     async {
-        // Wait for 30 seconds to get the order status updates
-        do! Async.Sleep(30000)
+        // Wait for 3 seconds to get the order status updates
+        printfn "Sleeping for 3 Secs"
+        do! Async.Sleep(3000)
 
         let updateOrderInDatabase (orderStatusUpdate: OrderStatusUpdate) =
-            match updateOrderStatus (orderID, orderStatusUpdate.FulfillmentStatus, orderStatusUpdate.RemainingQuantity) with
+            match updateOrderStatus (orderDetails.Exchange, orderID, orderStatusUpdate.FulfillmentStatus, orderStatusUpdate.RemainingQuantity) with
             | true ->
                 Result.Ok (OrderFulfillmentUpdated orderStatusUpdate.FulfillmentStatus)
             | false ->
@@ -295,25 +330,26 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
         let handleStatusUpdate orderStatusUpdate =
             async {
                 match orderStatusUpdate.FulfillmentStatus with
-                | FullyFulfilled | OneSideFilled ->
+                | "FullyFulfilled"  ->
                     return updateOrderInDatabase orderStatusUpdate
 
-                | PartiallyFulfilled ->
+                | "PartiallyFulfilled" ->
                     let newOrderDetails = { orderDetails with Quantity = orderStatusUpdate.RemainingQuantity }
                     let! createOrderResult = createOrderAsync newOrderDetails
                     match createOrderResult with
                     | Result.Ok _ ->
                         // Even if new order is created, we consider the current order as processed.
-                        return Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = FullyFulfilled; RemainingQuantity = 0.0 })
+                        return Result.Ok (OrderProcessed { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = "FullyFulfilled"; RemainingQuantity = 0.0 })
                     | Result.Error errMsg ->
                         return Result.Error errMsg
+                        
+                | "OneSideFilled" ->
+                    return updateOrderInDatabase orderStatusUpdate
+                    
+                |_ ->
+                    return updateOrderInDatabase orderStatusUpdate
             }
-
-                // sendEmailAsync "Your order was only partially filled." |> Async.Ignore
-                // Result.Ok (UserNotificationSent orderID)
-
-
-                    // let orderUpdate = { OrderID = orderID; OrderDetails = orderDetails; FulfillmentStatus = fulfillmentStatus }
+            
         match orderDetails.Exchange with
         | "Bitfinex" ->
             let! bitfinexResponseOption = BitfinexAPI.retrieveOrderTrades "DOTUSD" 1747566428
@@ -356,7 +392,7 @@ let processOrderUpdate (orderID: OrderID) (orderDetails: OrderDetails) : Async<R
     }
 
 // Main Workflow of Order Management: to create and process orders
-let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event, string>> =
+let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<OrderUpdate list, string>> =
     async {
         let resultsAsync = 
             ordersEmitted 
@@ -382,16 +418,20 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<Event, s
 
         let! results = resultsAsync 
 
-        // Check if all operations were successful
-        let allSuccess = results |> Array.forall (fun result -> 
+        // Separate successful results and errors
+        let successes, errors = results |> Array.partition (fun result ->
             match result with 
             | Result.Ok _ -> true 
             | Result.Error _ -> false)
 
-        if allSuccess then 
-            return Result.Ok (OrderProcessed { OrderID = IntOrderID 0; OrderDetails = { Currency = ""; Price = 0.0; OrderType = "Buy"; Quantity = 0.0; Exchange = "" }; FulfillmentStatus = FullyFulfilled; RemainingQuantity = 0.0 })
+        if errors |> Array.isEmpty then 
+            // If all operations were successful, return the list of OrderUpdate
+            let successfulUpdates = successes |> Array.choose (function Result.Ok orderUpdate -> Some orderUpdate | _ -> None)
+            return Result.Ok (successfulUpdates |> Array.toList)
         else 
-            return Result.Error "There were errors in processing some orders."
+            // If there were any errors, return the first error message
+            let firstError = errors |> Array.choose (function Result.Error errMsg -> Some errMsg | _ -> None) |> Array.head
+            return Result.Error firstError
     }
 
 
@@ -407,137 +447,160 @@ let exampleOrders : OrderEmitted = [
     { Currency = "LTCUSD"; Price = 150.0; OrderType = "Buy"; Quantity = 20.0; Exchange = "Bitstamp" }
 ]
 
-let testing_Orders = """
-[
-    {
-        "Currency": "BTCUSD",
-        "Price": 10000.0,
-        "OrderType": "Buy",
-        "Quantity": 1.0,
-        "Exchange": "Bitfinex"
-    },
-    {
-        "Currency": "ETHUSD",
-        "Price": 500.0,
-        "OrderType": "Sell",
-        "Quantity": 10.0,
-        "Exchange": "Kraken"
-    },
-    {
-        "Currency": "LTCUSD",
-        "Price": 150.0,
-        "OrderType": "Buy",
-        "Quantity": 20.0,
-        "Exchange": "Bitstamp"
-    }
-]
-"""
 
-let random = Random()
-let generateRandomID (length: int) (isNumeric: bool) =
-    let chars = if isNumeric then "0123456789" else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    let randomChars = Array.init length (fun _ -> chars.[random.Next(chars.Length)])
-    String(randomChars)
-let getOrderID (orderDetails: OrderDetails) : OrderID =
-    match orderDetails.Exchange with
-    | "Kraken" -> StringOrderID (generateRandomID 15 false) 
-    | "Bitstamp" -> StringOrderID (generateRandomID 4 true)
-    | "Bitfinex" -> StringOrderID (generateRandomID 9 true) 
-    | _ -> StringOrderID "Unknown"
-
-
-// Main entry point function
-let runOrders () =
-    let ordersEmitted = exampleOrders
-    let result = createAndProcessOrders ordersEmitted |> Async.RunSynchronously
-    match result with
-    | Result.Ok orderUpdate ->
-        match sendOrderMessage "strategyqueue" orderUpdate with
+let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
+    printfn "Handling order ID: %s" orderID
+    let messageContent = sprintf "OrderID: %s, Quantity: %f" orderID orderDetails.Quantity
+    printfn "Sending message: %s" messageContent
+    sendMessageAsync ("strategyqueue", messageContent)
+    match addOrderToDatabase (orderDetails, orderID) with
+    | true ->
+        Console.WriteLine("Order with ID " + orderID + " added to database successfully.")
+        let orderUpdateResult = processOrderUpdateTesting orderID orderDetails |> Async.RunSynchronously
+        match orderUpdateResult with
+        | Result.Ok orderStatusUpdate when orderStatusUpdate.FulfillmentStatus = "PartiallyFulfilled" ->
+            let newOrderDetails = { orderDetails with Quantity = orderStatusUpdate.RemainingQuantity }
+            let newOrderID = createOrderTesting newOrderDetails
+            handleOrder newOrderDetails newOrderID
         | Result.Ok _ ->
-            Console.WriteLine("Orders processed successfully, and message sent.")
+            Console.WriteLine("Order update processed successfully for Order ID " + orderID)
         | Result.Error errMsg ->
-            Console.WriteLine("Error sending message: " + errMsg)
-    | Result.Error errMsg ->
-        Console.WriteLine("Error processing orders: " + errMsg)
+            Console.WriteLine("Failed to process order update for Order ID " + orderID + ": " + errMsg)
+    | false ->
+        Console.WriteLine("Failed to add order with ID " + orderID + " to database.")
 
-
-// testing main, takes in ordersEmitted, sends message to the queue
-let runOrderManagement () =
+let runOrderManagementTesting () =
     let ordersEmitted = exampleOrders
     printfn "Orders emitted: %A" ordersEmitted
-    // iter thru the orders
     ordersEmitted |> List.iter (fun orderDetails ->
-        let orderID = getOrderID orderDetails
-        // let messageContent = sprintf "OrderID: %A, Quantity: %f" orderID orderDetails.Quantity
-        let messageContent = 
-            match orderID with
-            | StringOrderID id -> sprintf "OrderID: %s, Quantity: %f" id orderDetails.Quantity
-            | IntOrderID _ -> "1234" 
-            | _ -> "Unknown OrderID"
-        printfn "Sending message: %s" messageContent
-        sendMessageAsync ("strategyqueue", messageContent)
+        let orderID = createOrderTesting orderDetails
+        match orderID with
+        | "" -> 
+            Console.WriteLine("Cannot process order: OrderID is unknown.")
+        | id ->
+            handleOrder orderDetails id
     )
+    
+let runOrderManagement (ordersEmitted: OrderEmitted) =
+    printfn "Orders emitted: %A" ordersEmitted
+    ordersEmitted |> List.iter (fun orderDetails ->
+        let orderID = createOrderTesting orderDetails
+        match orderID with
+        | "" -> 
+            Console.WriteLine("Cannot process order: OrderID is unknown.")
+        | id ->
+            handleOrder orderDetails id
+    )
+    
 
-// Function to receive and process orders from "orderqueue"
-let rec receiveAndProcessOrders () =
+// Implementation of MailBox Agent
+type OrderMessage = 
+    | ProcessOrders of OrderEmitted
+    | Stop
+
+let orderAgentBasic = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+    let rec messageLoop () = async {
+        let! msg = inbox.Receive()
+        match msg with
+        | ProcessOrders ordersEmitted ->
+            runOrderManagement ordersEmitted
+            return! messageLoop()
+        | Stop ->
+            printfn "Stopping order processing agent."
+    }
+    messageLoop()
+)
+
+// Basic Version of Receiving and Processing Orders
+// Recursive Function to receive and process orders from "orderqueue"
+let rec receiveAndProcessOrdersBasic () =
     async {
         printfn "Waiting for message from 'orderqueue'..."
         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
-        // let! receivedMessageJson = receiveMessageAsync "orderqueue" |> Async.AwaitTask
         printfn "Received message: %s" receivedMessageJson
-        if String.IsNullOrEmpty receivedMessageJson then
-            printfn "No message received from 'orderqueue'."
-        else
+        if not (String.IsNullOrEmpty receivedMessageJson) then
             try
                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
-                ordersEmitted |> List.iter (fun orderDetails ->
-                    let orderID = getOrderID orderDetails
-                    // let messageContent = JsonConvert.SerializeObject({ OrderID = orderID; Quantity = orderDetails.Quantity })
-                    let messageContent = sprintf "OrderID: %A, Quantity: %f" orderID orderDetails.Quantity
-                    printfn "Sending message: %s" messageContent
-                    sendMessageAsync ("strategyqueue", messageContent)
-                )
+                orderAgentBasic.Post(ProcessOrders ordersEmitted)
             with
             | ex ->
                 printfn "An exception occurred: %s" ex.Message
     }
 
+
+// -------------------------
+// Implementation for Extra Credit Task2
+// -------------------------
+
+let orderCloudAgent (agentId: ActorKey) = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+    let rec messageLoop () = async {
+        let! msg = inbox.Receive()
+        match msg with
+        | ProcessOrders ordersEmitted ->
+            runOrderManagement ordersEmitted
+            return! messageLoop()
+        | Stop ->
+            printfn "Stopping order processing agent."
+    }
+    messageLoop()
+)
+
+// Refactoring to CloudAgent
+let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
+let queueName = "orderqueue"
+let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
+ConnectionFactory.StartListening(cloudConn, orderCloudAgent >> BasicCloudAgent)
+let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
+
+let rec receiveAndProcessOrdersDistributed () =
+    async {
+        printfn "Waiting for message from 'orderqueue'..."
+        let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+        printfn "Received message: %s" receivedMessageJson
+        if not (String.IsNullOrEmpty receivedMessageJson) then
+            try
+                let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+                distributedPost (ProcessOrders ordersEmitted) |> ignore
+                // orderAgent.Post(ProcessOrders ordersEmitted)
+            with
+            | ex ->
+                printfn "An exception occurred: %s" ex.Message
+    }
+
+
+// [<EntryPoint>]
+// // let main arg =
+// //
+// //     async {
+// //         do! receiveAndProcessOrders ()
+// //     } |> Async.Start
+// //
+// //     printfn "Press any key to exit..."
+// //     Console.ReadKey() |> ignore
+// //     orderAgent.Post(Stop) // 停止 MailboxProcessor
+// //     0
+// //     
+// let main argv =
+//     printfn "Starting Order Management System..."
+//     orderCloudAgent.Start()
+//     printfn "Press any key to exit..."
+//     Console.ReadKey() |> ignore
+//     0
+
+
 // [<EntryPoint>]
 // let main arg =
-//     sendMessageAsync ("orderqueue", testing_Orders)
-//     // runOrderReceiver ()
-//     // receiveAndProcessOrders ()
 
 //     async {
-//         do! receiveAndProcessOrders ()
-//     }  |> Async.Start
-//     // sendMessageAsync ("orderqueue", "testing orders")
-//     0 
+//         do! receiveAndProcessOrdersBasic ()
+//     } |> Async.Start
+    
+//     // receiveAndProcessOrdersDistributed () |> Async.Start
 
-
-// [<TestFixture>]
-// type OrderManagementTests() =
-
-//     // [<Test>]
-//     // member this.``Bitfinex Order Creation and Processing Test`` () =
-//     //     let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitfinex" }
-//     //     let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//     //     Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Kraken Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Kraken" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Bitstamp Order Creation and Processing Test`` () =
-//         let orderDetails = { Currency = "DOTUSD"; Price = 10000.0; OrderType = Buy; Quantity = 0.01; Exchange = "Bitstamp" }
-//         let result = createAndProcessOrders [orderDetails] |> Async.RunSynchronously
-//         Assert.IsNotNull(result)
-
-//     [<Test>]
-//     member this.``Run Test`` () =
-//         runOrderManagement ()
-
-    // <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
+//     printfn "Press any key to exit..."
+//     Console.ReadKey() |> ignore
+//     // orderAgent.Post(Stop)
+//     0
+    
+    
+    
