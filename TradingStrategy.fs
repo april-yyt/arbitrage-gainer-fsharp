@@ -10,6 +10,10 @@ open ServiceBus
 open Types
 open Newtonsoft.Json
 
+open FSharp.CloudAgent
+open FSharp.CloudAgent.Messaging
+open FSharp.CloudAgent.Connections
+
 // ---------------------------
 // Types and Event Definitions
 // ---------------------------
@@ -40,7 +44,6 @@ type TradingStrategyMessage =
     | GetParams of AsyncReplyChannel<TradingStrategyParameters>
     | Activate
     | Deactivate
-    | GetStatus of AsyncReplyChannel<bool>
 
 // Discriminated union type representing different events
 type Event =
@@ -117,28 +120,53 @@ let initTradingParams : TradingStrategyParameters =
       MaxAmountTotal = 0.0
       MaxDailyVolume = 0.0 }
 
-// Agent used to store, update, activate, and deactivate the current trading strategy.
+
+// Agent used to store and update the current trading strategy.
 let tradingStrategyAgent =
     MailboxProcessor.Start(fun inbox ->
-        let rec loop currParams activated =
+        let rec loop currParams =
             async {
                 let! msg = inbox.Receive()
 
                 match msg with
-                | UpdateStrategy newParams -> return! loop newParams activated
+                | UpdateStrategy newParams -> return! loop newParams
                 | GetParams replyChannel ->
                     replyChannel.Reply(currParams)
-                    return! loop currParams activated
-                | Activate -> return! loop currParams true
-                | Deactivate -> return! loop currParams false
-                | GetStatus replyChannel ->
-                    replyChannel.Reply(activated)
-                    return! loop currParams activated
+                    return! loop currParams
+                | _ -> return! loop currParams
             }
 
-        loop initTradingParams false // The new trading strategy should be deactivated until
+        loop initTradingParams // The new trading strategy should be deactivated until
                                      // explicitly activated with an Activate message.
     )
+
+// Refactored agent for extra credit task
+let activationAgent (agentId: ActorKey) =
+    MailboxProcessor.Start(fun inbox ->
+        let rec loop activated =
+            async {
+                let! msg = inbox.Receive()
+
+                match msg with
+                | Activate -> 
+                    printfn "Activated by agent %A" agentId
+                    return! loop true
+                | Deactivate -> 
+                    printfn "Deactivated by agent %A" agentId
+                    return! loop false
+                | _ -> return! loop activated
+            }
+
+        loop false // The new trading strategy should be deactivated until
+                                     // explicitly activated with an Activate message.
+    )
+
+// For extra credit task
+let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
+let queueName = "agentqueue"
+let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
+ConnectionFactory.StartListening(cloudConn, activationAgent >> BasicCloudAgent)
+let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
 
 // ----------
 // Workflows
@@ -162,7 +190,8 @@ let rec listenForVolumeUpdate () =
         volumeAgent.Post(UpdateVolume(dailyVol + tradeBookedVolume))
         match dailyVol + tradeBookedVolume with
         | x when x >= maxVol -> // Halt trading when max volume has been reached
-            tradingStrategyAgent.Post(Deactivate)
+            // tradingStrategyAgent.Post(Deactivate)
+            distributedPost Deactivate
             sendMessageAsync("tradingqueue", "stop trading")
         | _ -> ()
         do! Async.Sleep(1000)
@@ -179,7 +208,7 @@ let acceptNewTradingStrategy (input: TradingParametersInputed) =
               MaxAmountTotal = input.MaxAmountTotal
               MaxDailyVolume = input.MaxDailyVolume } }
 
-    tradingStrategyAgent.Post(UpdateStrategy newStrat.AcceptedStrategy)
+    distributedPost (UpdateStrategy newStrat.AcceptedStrategy)
     newStrat
 
 // Activating an accepted trading strategy, as needed
