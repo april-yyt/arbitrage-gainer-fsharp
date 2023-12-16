@@ -127,7 +127,14 @@ let updateOrderStatus (exchange: Exchange, orderID: OrderID, newStatus: Fulfillm
 // Helper Function Definitions
 // -------------------------
 
-// Helper Functions for Creating Testing OrderIDs
+let exampleOrders : OrderEmitted = [
+    { Currency = "BTCUSD"; Price = 10000.0; OrderType = "Buy"; Quantity = 1.0; Exchange = "Bitfinex" }
+    { Currency = "ETHUSD"; Price = 500.0; OrderType = "Sell"; Quantity = 10.0; Exchange = "Kraken" }
+    { Currency = "LTCUSD"; Price = 150.0; OrderType = "Buy"; Quantity = 20.0; Exchange = "Bitstamp" }
+]
+
+
+// Helper Functions for Testing 
 let random = Random()
 let generateRandomID (length: int) (isNumeric: bool) =
     let chars = if isNumeric then "0123456789" else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -175,7 +182,7 @@ let processOrderUpdateTesting (orderID: OrderID) (orderDetails: OrderDetails) : 
     }
 
 
-// Helper Function for submitting a new order on an exchange
+// Submitting a new order on an exchange
 // Involves Making API Calls and Parsing Data
 let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     async {
@@ -434,20 +441,7 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<OrderUpd
             return Result.Error firstError
     }
 
-
-let sendOrderMessage (queueName: string) (orderUpdate: Event) =
-    let json = JsonConvert.SerializeObject(orderUpdate)
-    sendMessageAsync(queueName, json)
-    Result.Ok ()
-
-
-let exampleOrders : OrderEmitted = [
-    { Currency = "BTCUSD"; Price = 10000.0; OrderType = "Buy"; Quantity = 1.0; Exchange = "Bitfinex" }
-    { Currency = "ETHUSD"; Price = 500.0; OrderType = "Sell"; Quantity = 10.0; Exchange = "Kraken" }
-    { Currency = "LTCUSD"; Price = 150.0; OrderType = "Buy"; Quantity = 20.0; Exchange = "Bitstamp" }
-]
-
-
+// Testing Setup
 let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
     printfn "Handling order ID: %s" orderID
     let messageContent = sprintf "OrderID: %s, Quantity: %f" orderID orderDetails.Quantity
@@ -469,19 +463,9 @@ let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
     | false ->
         Console.WriteLine("Failed to add order with ID " + orderID + " to database.")
 
-let runOrderManagementTesting () =
-    let ordersEmitted = exampleOrders
-    printfn "Orders emitted: %A" ordersEmitted
-    ordersEmitted |> List.iter (fun orderDetails ->
-        let orderID = createOrderTesting orderDetails
-        match orderID with
-        | "" -> 
-            Console.WriteLine("Cannot process order: OrderID is unknown.")
-        | id ->
-            handleOrder orderDetails id
-    )
-    
+
 let runOrderManagement (ordersEmitted: OrderEmitted) =
+    // let ordersEmitted = exampleOrders
     printfn "Orders emitted: %A" ordersEmitted
     ordersEmitted |> List.iter (fun orderDetails ->
         let orderID = createOrderTesting orderDetails
@@ -493,7 +477,7 @@ let runOrderManagement (ordersEmitted: OrderEmitted) =
     )
     
 
-// Implementation of MailBox Agent
+// Implementation of MailBoxProcessor Order Agent
 type OrderMessage = 
     | ProcessOrders of OrderEmitted
     | Stop
@@ -535,7 +519,6 @@ let rec receiveAndProcessOrdersBasic () =
 //         do! receiveAndProcessOrdersBasic ()
 //     } |> Async.Start
     
-
 //     printfn "Press any key to exit..."
 //     Console.ReadKey() |> ignore
 //     0
