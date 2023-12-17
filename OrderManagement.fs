@@ -22,8 +22,6 @@ open FSharp.CloudAgent.Connections
 open System.Threading.Tasks
 open Azure.Messaging.ServiceBus
 
-
-
 // -------------------------
 // Types and Event Definitions
 // -------------------------
