@@ -22,6 +22,12 @@ open FSharp.CloudAgent.Connections
 open System.Threading.Tasks
 open Azure.Messaging.ServiceBus
 
+open Akka.FSharp
+open Akka.Actor
+open Akka.Cluster
+open Akka.Remote
+open Akka.Configuration
+
 
 
 // -------------------------
@@ -531,28 +537,89 @@ let rec receiveAndProcessOrdersBasic () =
 // -------------------------
 // Implementation for Extra Credit Task2
 // -------------------------
+//
+// let orderCloudAgent (agentId: ActorKey) = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+//     let rec messageLoop () = async {
+//         let! msg = inbox.Receive()
+//         match msg with
+//         | ProcessOrders ordersEmitted ->
+//             runOrderManagement ordersEmitted
+//             return! messageLoop()
+//         | Stop ->
+//             printfn "Stopping order processing agent."
+//     }
+//     messageLoop()
+// )
+//
+// // Refactoring to CloudAgent
+// let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
+// let queueName = "orderqueue"
+// let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
+// ConnectionFactory.StartListening(cloudConn, orderCloudAgent >> BasicCloudAgent) |> ignore
+// let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
+//
+// let rec receiveAndProcessOrdersDistributed () =
+//     async {
+//         printfn "Waiting for message from 'orderqueue'..."
+//         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+//         printfn "Received message: %s" receivedMessageJson
+//         if not (String.IsNullOrEmpty receivedMessageJson) then
+//             try
+//                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+//                 distributedPost (ProcessOrders ordersEmitted) |> ignore
+//                 // orderAgent.Post(ProcessOrders ordersEmitted)
+//             with
+//             | ex ->
+//                 printfn "An exception occurred: %s" ex.Message
+//     }
 
-let orderCloudAgent (agentId: ActorKey) = MailboxProcessor<OrderMessage>.Start(fun inbox ->
-    let rec messageLoop () = async {
-        let! msg = inbox.Receive()
-        match msg with
-        | ProcessOrders ordersEmitted ->
-            runOrderManagement ordersEmitted
-            return! messageLoop()
-        | Stop ->
-            printfn "Stopping order processing agent."
+
+// Refactoring using akka.NET
+
+// Initialize Actor
+type OrderActor() = 
+    inherit ReceiveActor()
+
+    let runOrderManagement (ordersEmitted: OrderEmitted) =
+        printfn "Orders emitted: %A" ordersEmitted
+        ordersEmitted |> List.iter (fun orderDetails ->
+            let orderID = createOrderTesting orderDetails
+            match orderID with
+            | "" -> 
+                Console.WriteLine("Cannot process order: OrderID is unknown.")
+            | id ->
+                handleOrder orderDetails id
+        )
+
+    do
+        base.Receive<OrderMessage>(fun message ->
+            match message with
+            | ProcessOrders ordersEmitted ->
+                runOrderManagement ordersEmitted
+            | Stop ->
+                printfn "Stopping order processing actor."
+        )
+
+// Configure Actor System
+let config = ConfigurationFactory.ParseString("""
+    akka {  
+        actor {
+            provider = "Akka.Remote.RemoteActorRefProvider, Akka.Remote"
+        }
+        remote {
+            dot-netty.tcp {
+                port = 8085
+                hostname = "localhost"
+            }
+        }
     }
-    messageLoop()
-)
+    """)
 
-// Refactoring to CloudAgent
-let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
-let queueName = "orderqueue"
-let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
-ConnectionFactory.StartListening(cloudConn, orderCloudAgent >> BasicCloudAgent)
-let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
+let system = ActorSystem.Create("OrderSystem", config)
+let orderActorRef = system.ActorOf<OrderActor>("orderActor")
 
-let rec receiveAndProcessOrdersDistributed () =
+
+let rec receiveAndProcessOrdersAkka () =
     async {
         printfn "Waiting for message from 'orderqueue'..."
         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
@@ -560,47 +627,35 @@ let rec receiveAndProcessOrdersDistributed () =
         if not (String.IsNullOrEmpty receivedMessageJson) then
             try
                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
-                distributedPost (ProcessOrders ordersEmitted) |> ignore
-                // orderAgent.Post(ProcessOrders ordersEmitted)
+                orderActorRef <! ProcessOrders ordersEmitted  // 使用 Actor 处理消息
             with
             | ex ->
                 printfn "An exception occurred: %s" ex.Message
     }
 
-
-// [<EntryPoint>]
-// // let main arg =
-// //
-// //     async {
-// //         do! receiveAndProcessOrders ()
-// //     } |> Async.Start
-// //
-// //     printfn "Press any key to exit..."
-// //     Console.ReadKey() |> ignore
-// //     orderAgent.Post(Stop) // 停止 MailboxProcessor
-// //     0
-// //     
-// let main argv =
-//     printfn "Starting Order Management System..."
-//     orderCloudAgent.Start()
-//     printfn "Press any key to exit..."
-//     Console.ReadKey() |> ignore
-//     0
-
-
-// [<EntryPoint>]
+[<EntryPoint>]
 // let main arg =
-
+//
 //     async {
 //         do! receiveAndProcessOrdersBasic ()
 //     } |> Async.Start
-    
+//     
 //     // receiveAndProcessOrdersDistributed () |> Async.Start
-
+//
 //     printfn "Press any key to exit..."
 //     Console.ReadKey() |> ignore
 //     // orderAgent.Post(Stop)
 //     0
+//     
+//     
     
+let main args =
+    receiveAndProcessOrdersAkka () |> Async.Start
     
+    printfn "Press any key to exit..."
+    Console.ReadKey() |> ignore
     
+    // Shut Down Actor System
+    system.Terminate() |> Async.AwaitTask |> Async.RunSynchronously
+    
+    0

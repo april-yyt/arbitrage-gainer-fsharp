@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="akka" Version="1.5.14" />
+    <PackageReference Include="akka.Cluster" Version="1.5.14" />
+    <PackageReference Include="akka.FSharp" Version="1.5.14" />
+    <PackageReference Include="akka.Remote" Version="1.5.14" />
     <PackageReference Include="Azure.Data.Tables" Version="12.8.2" />
     <PackageReference Include="Azure.Identity" Version="1.10.4" />
     <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.17.1" />
