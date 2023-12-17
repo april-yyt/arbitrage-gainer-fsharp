@@ -18,8 +18,7 @@
 
 The trading strategy is a bounded context representing a **core subdomain**. It consists of the following workflows, all of which can be found in [TradingStrategy.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs):
 
-- `updateTransactionsVolume` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L163)): processing an update to the transactions daily volume
-- `updateTransactionsAmount` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L180)): processing an update to the transactions total amount
+- `listenForVolumeUpdate`: Listens to service bus queue for an update to volume from the Order Management bounded context, and processes an update to the transactions daily volume
 - `acceptNewTradingStrategy` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L191)): process a new trading strategy provided by the user
 - `activateAcceptedTradingTrategy` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L204)): activate an accepted trading strategy for use in trading
 - `resetForNewDay` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/TradingStrategy.fs#L214)): the daily volume should be reset so as to accurately track whether the maximal daily volume is reached
@@ -72,37 +71,32 @@ Each workflow listed above includes error handling to manage potential failures 
   - `unsubscribeRealTimeDataFeed`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L238))
   - `receiveMsgFromWSAndTrade`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/ArbitrageOpportunity.fs#L267-L292))
 
+
 ## Order Management
 
-The OrderManagement a bounded context representing a **generic subdomain**. The workflows within this bounded context can all be found within [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs):
+The OrderManagement module is a bounded context representing a **generic subdomain**, focusing on managing and processing orders. This module interacts with various cryptocurrency exchanges and ensures that orders are executed according to emitted order details it receives. The source code can be found in [OrderManagement.fs](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs).
 
-### General Functionalities
+### Core Workflows
 
-- `createOrderAsync` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L202)): Processes each order by capturing details, initiating buy/sell orders, and recording them in the database, ultimately generating a list of `OrderInitialize` events.
+- `createOrderAsync` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L305)): Processes each order by capturing details, initiating buy/sell orders, and recording them in the database.
+- `submitOrderAsync`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L187)): Asynchronously submits a new order to the specified exchange.
+- `processOrderUpdate`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L324)): Retrieves and processes updates for an existing order. Query the status from the exchanges and perform corresponding actions based on fulfillment status.
+- `createAndProcessOrders`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L402)): Main workflow to create new orders and process their updates.
 
-- `createOrders` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L217)): Taking in an `OrderEmitted` event and processes a list of orders.
 
-- `processOrderUpdate` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L235)): Retrieve and processes update about the transaction volume and amount, maintaining up-to-date records of transactions.
 
-- `userNotification` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L303)): Notifies users about their order status when only one side of the order is filled.
+### Side Effects
 
-- `createAndProcessOrders` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L313)): A wrapper workflow that creates and processes the orders based on specific handling rules.
+In each of these modules, functions are designed to manage side effects—such as making HTTP requests or database operations—and include error handling to ensure the robustness of the system. 
 
-### Side Effects and Error Handling
+**Database Operations**: Interacts with Azure Table Storage for storing and retrieving order details.
+  - `addOrderToDatabase`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L98)): Adds a new order to the database. 
+  - `updateOrderStatus`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L110)): Updated an existing order in the database.
 
-Each workflow listed above includes error handling to manage potential failures and ensure the system's robustness. The following side effect areas have been identified and error-handled:
+**Helper Functions**
 
-**API Calls for Submitting Orders to Exchanges**:
-
-- `initiateBuySellOrderAsync` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L52)) : responsible for sending new orders to the respective exchange APIs. It handles errors such as network failures or exchange-specific errors and returns a detailed message about the failure. This function is integral to the order creation workflow and ensures that orders are placed successfully on the market.
-
-**Order Update Broadcast**:
-
-- `processOrderUpdate` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L110)) : push updates from the exchange to our system. This function waits for a specified delay before attempting to retrieve the order status. If the connection to the exchange fails or the exchange returns an error, this function will handle it gracefully and log the error for further inspection.
-
-**User Notifications**:
-
-- `userNotification` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L303)) : scheduled for a more detailed implementation in Milestone IV. It will handle user notifications for various order-related events. It will ensure that notifications are sent out reliably and will manage failures by retrying or logging issues as appropriate.
+- `generateRandomID`, `generateRandomFulfillmentStatus`, `generateRandomRemainingQuantity`: Generate random IDs and statuses for testing purposes.
+- `processBitfinexResponse`, `processKrakenResponse`, `processBitstampResponse`: Parse responses from different exchanges and update the order status accordingly.
 
 **Bitfinex API Functions:**
 
@@ -120,32 +114,11 @@ Each workflow listed above includes error handling to manage potential failures 
 - `buyMarketOrder` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/api/BitstampAPI.fs#L22)) and `sellMarketOrder` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/api/BitstampAPI.fs#L29)) : These functions initiate market orders on Bitstamp and are equipped to handle errors such as network failures or unexpected API changes.
 - `orderStatus` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/api/BitstampAPI.fs#L36)) : Checks the status of an order on Bitstamp, handling any potential errors during the request or in parsing the response.
 
-**Database Operations**:
-
-- `recordOrderInDatabaseAsync` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L86)) function takes care of persisting order details into the database. It provides comprehensive error handling for database connectivity issues or write failures, ensuring that order details are not lost and system integrity is maintained.
-
-- `addOrderToDatabase` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/database/DatabaseOperations.fs#L9)) : Attempts to add an order entity to the database and includes comprehensive error handling for database operation failures.
-- `getOrderFromDatabase` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/database/DatabaseOperations.fs#L13)) : Retrieves an order entity from the database, handling cases where the order might not exist or there's an issue with the database connection.
-- `updateOrderInDatabase` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/database/DatabaseOperations.fs#L17)) : Updates an existing order entity in the database, with error handling for any issues that might occur during the update process.
-- `deleteOrderFromDatabase` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/database/DatabaseOperations.fs#L21)) : Removes an order entity from the database, ensuring that any errors are caught and handled appropriately.
-
-In each of these modules, functions are designed to manage side effects—such as making HTTP requests or database operations—and include error handling to ensure the robustness of the system. The error handling strategies involve catching exceptions, validating API responses, and ensuring that any failures do not disrupt the overall workflow and are logged for further analysis.
-- `databaseOperations` ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L189)): Handles database interactions, crucial for maintaining persistent data and state of the trading operations.
-
-### Side Effects and Error Handling
-
-Each workflow listed above includes error handling to manage potential failures and ensure the system's robustness. The following side effect areas have been identified and error-handled:
-
-1. **API Calls to External Services**: `initiateBuySellOrderAsync`
-2. **Database Operations**: `recordOrderInDatabaseAsync`
-3. **Trade Execution**: `tradeExecution`
-4. **Order Fulfillment**: `orderFulfillment`
-5. **User Notifications**: `userNotification`
-6. **Order Update Broadcast**: `pushOrderUpdate`
-7. **Error Detection and Management**: `handleOrderError`
 
 
-
+### Error Handling
+- The module includes comprehensive error handling for various operations, such as adding orders to the database and updating order statuses. 
+- The error handling strategies involve catching exceptions, validating API responses, and ensuring that any failures do not disrupt the overall workflow and are logged for further analysis.
 
 ## Domain Services
 
@@ -200,3 +173,6 @@ We have classified the following functionalities in our system as domain service
       - stringified order details for creating orders
    - send message code pointer
    - receive message code pointer 
+- **[strategyqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/strategyqueue/explorer)**: connecting **OrderManagement** and **TradingStrategy** bounded contexts
+  - message type:
+    - stringified volume update details for an order
