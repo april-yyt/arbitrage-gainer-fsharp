@@ -83,7 +83,6 @@ type NewDayBegan =
     { PrevDayDeactivated: TradingStrategyDeactivated option
       TradingStrategy: TradingStrategyParameters }
 
-
 type UpdateTransactionVolume = { OrderID: OrderID; Quantity: float }
 
 // -------
@@ -155,8 +154,7 @@ let rec listenForVolumeUpdate () =
     async {
         let msg = receiveMessageAsync "strategyqueue"
         printfn "msg received from service bus: %A" msg
-        let volUpdate = JsonConvert.DeserializeObject<UpdateTransactionVolume>(msg)
-        let tradeBookedVolume = volUpdate.Quantity
+        let tradeBookedVolume = float msg
         let dailyVol = volumeAgent.PostAndReply(CheckCurrentVolume)
         let maxVol = tradingStrategyAgent.PostAndReply(GetParams).MaxDailyVolume
         volumeAgent.Post(UpdateVolume(dailyVol + tradeBookedVolume))

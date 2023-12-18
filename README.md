@@ -175,4 +175,4 @@ We have classified the following functionalities in our system as domain service
    - receive message code pointer 
 - **[strategyqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/strategyqueue/explorer)**: connecting **OrderManagement** and **TradingStrategy** bounded contexts
   - message type:
-    - stringified volume update details for an order
+    - float volume update

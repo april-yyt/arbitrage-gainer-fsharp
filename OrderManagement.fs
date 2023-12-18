@@ -60,6 +60,8 @@ type Event =
 
 type OrderEmitted = OrderDetails list
 
+type UpdateTransactionVolume = { OrderID: OrderID; Quantity: float }
+
 // --------------------------
 // DB Configuration Constants
 // --------------------------
@@ -442,7 +444,7 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<OrderUpd
 // Testing Setup
 let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
     printfn "Handling order ID: %s" orderID
-    let messageContent = sprintf "OrderID: %s, Quantity: %f" orderID orderDetails.Quantity
+    let messageContent = sprintf "%f" orderDetails.Quantity
     printfn "Sending message: %s" messageContent
     sendMessageAsync ("strategyqueue", messageContent)
     match addOrderToDatabase (orderDetails, orderID) with
