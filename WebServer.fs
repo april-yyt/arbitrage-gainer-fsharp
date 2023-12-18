@@ -8,6 +8,11 @@ open TradingStrategy
 open ArbitrageOpportunity
 open OrderManagement
 open HistoricalSpreadCalc
+open Akka.FSharp
+open Akka.Actor
+open Akka.Cluster
+open Akka.Remote
+open Akka.Configuration
 
 let app =
   choose
@@ -32,9 +37,17 @@ let main args =
     }
     |> Async.Start
     async {
-        do! receiveAndProcessOrders ()
+        do! receiveAndProcessOrdersAkka ()
     }
     |> Async.Start
+    // let orderActorRef = system.ActorOf<OrderActor>("orderActor")
+    // receiveAndProcessOrdersAkka orderActorRef |> Async.Start
+    // printfn "Press any key to exit..."
+    // Console.ReadKey() |> ignore
+    // system.Terminate() |> Async.AwaitTask |> Async.RunSynchronously
+
     let cfg = defaultConfig
     startWebServer cfg app
     0
+
+

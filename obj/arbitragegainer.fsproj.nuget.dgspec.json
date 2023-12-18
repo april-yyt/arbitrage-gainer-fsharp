@@ -1,0 +1,125 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/aprilyang/Desktop/CMU/18656/ssh proj/arbitragegainer/arbitragegainer.fsproj": {}
+  },
+  "projects": {
+    "/Users/aprilyang/Desktop/CMU/18656/ssh proj/arbitragegainer/arbitragegainer.fsproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/aprilyang/Desktop/CMU/18656/ssh proj/arbitragegainer/arbitragegainer.fsproj",
+        "projectName": "arbitragegainer",
+        "projectPath": "/Users/aprilyang/Desktop/CMU/18656/ssh proj/arbitragegainer/arbitragegainer.fsproj",
+        "packagesPath": "/Users/aprilyang/.nuget/packages/",
+        "outputPath": "/Users/aprilyang/Desktop/CMU/18656/ssh proj/arbitragegainer/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/aprilyang/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net6.0"
+        ],
+        "sources": {
+          "/usr/local/share/dotnet/sdk/6.0.414/FSharp/library-packs": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net6.0": {
+            "targetAlias": "net6.0",
+            "projectReferences": {}
+          }
+        }
+      },
+      "frameworks": {
+        "net6.0": {
+          "targetAlias": "net6.0",
+          "dependencies": {
+            "Azure.Data.Tables": {
+              "target": "Package",
+              "version": "[12.8.2, )",
+              "generatePathProperty": true
+            },
+            "Azure.Identity": {
+              "target": "Package",
+              "version": "[1.10.4, )",
+              "generatePathProperty": true
+            },
+            "Azure.Messaging.ServiceBus": {
+              "target": "Package",
+              "version": "[7.17.1, )",
+              "generatePathProperty": true
+            },
+            "BenchmarkDotNet": {
+              "target": "Package",
+              "version": "[0.13.11, )",
+              "generatePathProperty": true
+            },
+            "FSharp.Core": {
+              "include": "Runtime, Compile, Build, Native, Analyzers, BuildTransitive",
+              "target": "Package",
+              "version": "[6.0.7, )",
+              "generatePathProperty": true
+            },
+            "NUnit": {
+              "target": "Package",
+              "version": "[4.0.1, )",
+              "generatePathProperty": true
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.3, )",
+              "generatePathProperty": true
+            },
+            "SendGrid": {
+              "target": "Package",
+              "version": "[9.28.1, )",
+              "generatePathProperty": true
+            },
+            "Suave": {
+              "target": "Package",
+              "version": "[2.6.2, )",
+              "generatePathProperty": true
+            },
+            "akka": {
+              "target": "Package",
+              "version": "[1.5.14, )",
+              "generatePathProperty": true
+            },
+            "akka.Cluster": {
+              "target": "Package",
+              "version": "[1.5.14, )",
+              "generatePathProperty": true
+            },
+            "akka.FSharp": {
+              "target": "Package",
+              "version": "[1.5.14, )",
+              "generatePathProperty": true
+            },
+            "akka.Remote": {
+              "target": "Package",
+              "version": "[1.5.14, )",
+              "generatePathProperty": true
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/6.0.414/RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

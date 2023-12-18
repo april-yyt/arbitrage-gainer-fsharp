@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <RestoreSuccess Condition=" '$(RestoreSuccess)' == '' ">True</RestoreSuccess>
+    <RestoreTool Condition=" '$(RestoreTool)' == '' ">NuGet</RestoreTool>
+    <ProjectAssetsFile Condition=" '$(ProjectAssetsFile)' == '' ">$(MSBuildThisFileDirectory)project.assets.json</ProjectAssetsFile>
+    <NuGetPackageRoot Condition=" '$(NuGetPackageRoot)' == '' ">/Users/aprilyang/.nuget/packages/</NuGetPackageRoot>
+    <NuGetPackageFolders Condition=" '$(NuGetPackageFolders)' == '' ">/Users/aprilyang/.nuget/packages/</NuGetPackageFolders>
+    <NuGetProjectStyle Condition=" '$(NuGetProjectStyle)' == '' ">PackageReference</NuGetProjectStyle>
+    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">6.3.3</NuGetToolVersion>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <SourceRoot Include="/Users/aprilyang/.nuget/packages/" />
+  </ItemGroup>
+  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Import Project="$(NuGetPackageRoot)nunit/4.0.1/build/NUnit.props" Condition="Exists('$(NuGetPackageRoot)nunit/4.0.1/build/NUnit.props')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.diagnostics.tracing.traceevent/3.0.2/buildTransitive/Microsoft.Diagnostics.Tracing.TraceEvent.props" Condition="Exists('$(NuGetPackageRoot)microsoft.diagnostics.tracing.traceevent/3.0.2/buildTransitive/Microsoft.Diagnostics.Tracing.TraceEvent.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <PkgFSharp_Core Condition=" '$(PkgFSharp_Core)' == '' ">/Users/aprilyang/.nuget/packages/fsharp.core/6.0.7</PkgFSharp_Core>
+    <PkgSuave Condition=" '$(PkgSuave)' == '' ">/Users/aprilyang/.nuget/packages/suave/2.6.2</PkgSuave>
+    <PkgNewtonsoft_Json Condition=" '$(PkgNewtonsoft_Json)' == '' ">/Users/aprilyang/.nuget/packages/newtonsoft.json/13.0.3</PkgNewtonsoft_Json>
+    <PkgSendGrid Condition=" '$(PkgSendGrid)' == '' ">/Users/aprilyang/.nuget/packages/sendgrid/9.28.1</PkgSendGrid>
+    <PkgNUnit Condition=" '$(PkgNUnit)' == '' ">/Users/aprilyang/.nuget/packages/nunit/4.0.1</PkgNUnit>
+    <PkgMicrosoft_CodeAnalysis_Analyzers Condition=" '$(PkgMicrosoft_CodeAnalysis_Analyzers)' == '' ">/Users/aprilyang/.nuget/packages/microsoft.codeanalysis.analyzers/3.3.3</PkgMicrosoft_CodeAnalysis_Analyzers>
+    <PkgBenchmarkDotNet Condition=" '$(PkgBenchmarkDotNet)' == '' ">/Users/aprilyang/.nuget/packages/benchmarkdotnet/0.13.11</PkgBenchmarkDotNet>
+    <PkgAzure_Messaging_ServiceBus Condition=" '$(PkgAzure_Messaging_ServiceBus)' == '' ">/Users/aprilyang/.nuget/packages/azure.messaging.servicebus/7.17.1</PkgAzure_Messaging_ServiceBus>
+    <PkgAzure_Identity Condition=" '$(PkgAzure_Identity)' == '' ">/Users/aprilyang/.nuget/packages/azure.identity/1.10.4</PkgAzure_Identity>
+    <PkgAzure_Data_Tables Condition=" '$(PkgAzure_Data_Tables)' == '' ">/Users/aprilyang/.nuget/packages/azure.data.tables/12.8.2</PkgAzure_Data_Tables>
+    <PkgAkka Condition=" '$(PkgAkka)' == '' ">/Users/aprilyang/.nuget/packages/akka/1.5.14</PkgAkka>
+    <PkgAkka_Remote Condition=" '$(PkgAkka_Remote)' == '' ">/Users/aprilyang/.nuget/packages/akka.remote/1.5.14</PkgAkka_Remote>
+    <PkgAkka_FSharp Condition=" '$(PkgAkka_FSharp)' == '' ">/Users/aprilyang/.nuget/packages/akka.fsharp/1.5.14</PkgAkka_FSharp>
+    <PkgAkka_Cluster Condition=" '$(PkgAkka_Cluster)' == '' ">/Users/aprilyang/.nuget/packages/akka.cluster/1.5.14</PkgAkka_Cluster>
+  </PropertyGroup>
+</Project>
