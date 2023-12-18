@@ -183,20 +183,35 @@ let rec listenForVolumeUpdate () =
     async {
         let msg = receiveMessageAsync "strategyqueue"
         printfn "msg received from service bus: %A" msg
-        let volUpdate = JsonConvert.DeserializeObject<UpdateTransactionVolume>(msg)
-        let tradeBookedVolume = volUpdate.Quantity
-        let dailyVol = volumeAgent.PostAndReply(CheckCurrentVolume)
-        let maxVol = tradingStrategyAgent.PostAndReply(GetParams).MaxDailyVolume
-        volumeAgent.Post(UpdateVolume(dailyVol + tradeBookedVolume))
-        match dailyVol + tradeBookedVolume with
-        | x when x >= maxVol -> // Halt trading when max volume has been reached
-            // tradingStrategyAgent.Post(Deactivate)
-            distributedPost Deactivate
-            sendMessageAsync("tradingqueue", "stop trading")
-        | _ -> ()
+
+        match msg with
+        | null | "" ->
+            printfn "Received an empty message, skipping."
+        | _ ->
+            try
+                printfn "Attempting to deserialize message: %s" msg
+                let volUpdate = JsonConvert.DeserializeObject<UpdateTransactionVolume>(msg)
+                printfn "Deserialized message to volume update: %A" volUpdate
+                let tradeBookedVolume = volUpdate.Quantity
+                let dailyVol = volumeAgent.PostAndReply(CheckCurrentVolume)
+                let maxVol = tradingStrategyAgent.PostAndReply(GetParams).MaxDailyVolume
+                volumeAgent.Post(UpdateVolume(dailyVol + tradeBookedVolume))
+
+                match dailyVol + tradeBookedVolume with
+                | x when x >= maxVol ->
+                    printfn "Max volume reached. Sending stop trading message."
+                    tradingStrategyAgent.Post(Deactivate)
+                    sendMessageAsync("tradingqueue", "stop trading")
+                | _ -> ()
+            with
+            | ex ->
+                printfn "Error processing message: %s" ex.Message
+
         do! Async.Sleep(1000)
         return! listenForVolumeUpdate ()
     }
+
+
 
 // Processing a new trading strategy provided by the user
 let acceptNewTradingStrategy (input: TradingParametersInputed) =
