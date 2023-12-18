@@ -40,11 +40,6 @@ let main args =
         do! receiveAndProcessOrdersAkka ()
     }
     |> Async.Start
-    // let orderActorRef = system.ActorOf<OrderActor>("orderActor")
-    // receiveAndProcessOrdersAkka orderActorRef |> Async.Start
-    // printfn "Press any key to exit..."
-    // Console.ReadKey() |> ignore
-    // system.Terminate() |> Async.AwaitTask |> Async.RunSynchronously
 
     let cfg = defaultConfig
     startWebServer cfg app

@@ -533,7 +533,11 @@ let rec receiveAndProcessOrdersBasic () =
 // -------------------------
 // Implementation for Extra Credit Task2
 // -------------------------
-//
+
+// #########################
+// 1. Implementation using FSharp Cloud Agent
+// #########################
+
 // let orderCloudAgent (agentId: ActorKey) = MailboxProcessor<OrderMessage>.Start(fun inbox ->
 //     let rec messageLoop () = async {
 //         let! msg = inbox.Receive()
@@ -546,14 +550,14 @@ let rec receiveAndProcessOrdersBasic () =
 //     }
 //     messageLoop()
 // )
-//
+
 // // Refactoring to CloudAgent
 // let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
 // let queueName = "orderqueue"
 // let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
 // ConnectionFactory.StartListening(cloudConn, orderCloudAgent >> BasicCloudAgent) |> ignore
 // let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
-//
+
 // let rec receiveAndProcessOrdersDistributed () =
 //     async {
 //         printfn "Waiting for message from 'orderqueue'..."
@@ -570,7 +574,9 @@ let rec receiveAndProcessOrdersBasic () =
 //     }
 
 
-// Refactoring using akka.NET
+// #########################
+// 2. Imlementation using Akka.NET
+// #########################
 
 // Initialize Actor
 type OrderActor() = 
@@ -632,25 +638,20 @@ let rec receiveAndProcessOrdersAkka () =
 // [<EntryPoint>]
 // let main arg =
 //
+//     // If Using the Basic Mailbox Processor
 //     async {
 //         do! receiveAndProcessOrdersBasic ()
 //     } |> Async.Start
 //     
+//     // If Using the FSharp Cloud Agent
 //     // receiveAndProcessOrdersDistributed () |> Async.Start
 //
-//     printfn "Press any key to exit..."
-//     Console.ReadKey() |> ignore
-//     // orderAgent.Post(Stop)
-//     0
-//     
-//     
-    
-// let main args =
+//     // If Using Akka.NET
 //     receiveAndProcessOrdersAkka () |> Async.Start
     
 //     printfn "Press any key to exit..."
 //     Console.ReadKey() |> ignore
-    
+
 //     // Shut Down Actor System
 //     system.Terminate() |> Async.AwaitTask |> Async.RunSynchronously
     
