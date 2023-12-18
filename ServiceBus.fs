@@ -15,14 +15,30 @@ let sendMessageAsync(queueName : string, messageContent: string) =
     sender.DisposeAsync().AsTask().Wait()
     client.DisposeAsync().AsTask().Wait()
         
+// let receiveMessageAsync(queueName : string) =
+//     let client = ServiceBusClient(ns, DefaultAzureCredential())
+//     let receiver = client.CreateReceiver(queueName)
+//     let receivedMessage = receiver.ReceiveMessageAsync().Result
+//     receiver.CompleteMessageAsync(receivedMessage).Wait()
+//     receiver.DisposeAsync().AsTask().Wait()
+//     client.DisposeAsync().AsTask().Wait()
+//
+//     match receivedMessage with
+//     | null -> ""
+//     | _ -> receivedMessage.Body.ToString()
+
 let receiveMessageAsync(queueName : string) =
     let client = ServiceBusClient(ns, DefaultAzureCredential())
     let receiver = client.CreateReceiver(queueName)
-    let receivedMessage = receiver.ReceiveMessageAsync().Result
-    receiver.CompleteMessageAsync(receivedMessage).Wait()
-    receiver.DisposeAsync().AsTask().Wait()
-    client.DisposeAsync().AsTask().Wait()
-
-    match receivedMessage with
-    | null -> ""
-    | _ -> receivedMessage.Body.ToString()
+    
+    try
+        let receivedMessage = receiver.ReceiveMessageAsync().Result
+        match receivedMessage with
+        | null -> 
+            ""
+        | message ->
+            receiver.CompleteMessageAsync(message).Wait()
+            message.Body.ToString()
+    finally
+        receiver.DisposeAsync().AsTask().Wait()
+        client.DisposeAsync().AsTask().Wait()

@@ -161,7 +161,9 @@ let rec listenForVolumeUpdate () =
             printfn "Received an empty message, skipping."
         | _ ->
             try
+                printfn "Attempting to deserialize message: %s" msg
                 let volUpdate = JsonConvert.DeserializeObject<UpdateTransactionVolume>(msg)
+                printfn "Deserialized message to volume update: %A" volUpdate
                 let tradeBookedVolume = volUpdate.Quantity
                 let dailyVol = volumeAgent.PostAndReply(CheckCurrentVolume)
                 let maxVol = tradingStrategyAgent.PostAndReply(GetParams).MaxDailyVolume
@@ -169,7 +171,7 @@ let rec listenForVolumeUpdate () =
 
                 match dailyVol + tradeBookedVolume with
                 | x when x >= maxVol ->
-                    // Halt trading when max volume has been reached
+                    printfn "Max volume reached. Sending stop trading message."
                     tradingStrategyAgent.Post(Deactivate)
                     sendMessageAsync("tradingqueue", "stop trading")
                 | _ -> ()
