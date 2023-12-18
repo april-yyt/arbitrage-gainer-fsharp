@@ -7,7 +7,6 @@
 
   <ItemGroup>
     <Compile Include="Types.fs" />
-    <Compile Include="database/DatabaseOperations.fs" />
     <Compile Include="api/BitfinexAPI.fs" />
     <Compile Include="api/BitstampAPI.fs" />
     <Compile Include="api/KrakenAPI.fs" />
@@ -26,10 +25,14 @@
     <PackageReference Include="Azure.Identity" Version="1.10.4" />
     <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.17.1" />
     <PackageReference Include="BenchmarkDotNet" Version="0.13.11" />
+    <PackageReference Include="FSharp.CloudAgent" Version="0.3.0" />
+    <PackageReference Include="Microsoft.Azure.ServiceBus" Version="5.2.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NUnit" Version="4.0.1" />
     <PackageReference Include="SendGrid" Version="9.28.1" />
     <PackageReference Include="Suave" Version="2.6.2" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
+    <PackageReference Include="System.ServiceModel.Primitives" Version="4.0.0" />
   </ItemGroup>
 
 </Project>

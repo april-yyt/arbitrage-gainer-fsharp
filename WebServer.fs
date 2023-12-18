@@ -32,7 +32,7 @@ let main args =
     }
     |> Async.Start
     async {
-        do! receiveAndProcessOrders ()
+        do! receiveAndProcessOrdersBasic ()
     }
     |> Async.Start
     let cfg = defaultConfig
