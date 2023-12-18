@@ -176,3 +176,37 @@ We have classified the following functionalities in our system as domain service
 - **[strategyqueue](https://portal.azure.com/#@andrewcmu.onmicrosoft.com/resource/subscriptions/075cf1cf-2912-4a8b-8d6f-fbb9c461bc2b/resourceGroups/ArbitrageGainer/providers/Microsoft.ServiceBus/namespaces/ArbitrageGainer/queues/strategyqueue/explorer)**: connecting **OrderManagement** and **TradingStrategy** bounded contexts
   - message type:
     - stringified volume update details for an order
+
+
+## Extra Credit Task 2
+- Agent-Based State Management in Distributed Environment
+
+### Introduction to Akka.NET
+Akka.NET is a toolkit and runtime for building highly concurrent, distributed, and fault-tolerant event-driven applications on .NET & Mono. This framework simplifies the development of big data and distributed cloud applications by providing a model where multiple concurrent processes can coexist and interact in a non-blocking manner. Akka.NET allows developers to create systems that are scalable both up (more powerful single machines) and out (across multiple machines).
+
+### Implementation Logic
+Our implementation employs Akka.NET to refactor the state management mechanism in a distributed environment. The primary goal is to enable the system to work effectively across multiple machines, leveraging Akka.NET's capability for managing concurrent processes and state in a distributed manner.
+
+### Key Components:
+- **OrderActor** ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L576)): An actor class that inherits from `ReceiveActor`. It's responsible for processing orders emitted by the system. Each order is handled based on its ID, with special handling for unknown IDs.
+- **Actor System Configuration** ([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L600-L615)): The system is configured to run remotely, with specified hostname and port, making it suitable for a distributed environment.
+- **Order Processing Workflow**: Asynchronous workflow `receiveAndProcessOrdersAkka`([link](https://github.com/yutongyaF2023/arbitragegainer/blob/main/OrderManagement.fs#L618)) listens for messages from the `orderqueue`, deserializes them, and processes them using the `OrderActor`.
+
+
+### Running the System
+To run this system, follow these steps:
+
+1. Ensure Akka.NET dependencies are properly installed in the project.
+2. Compile the project using F# compiler or IDE and run the compiled project.
+3. The system will start listening for messages on the orderqueue and process them as they arrive.
+
+### Fulfilling the Task Requirements
+This implementation successfully meets the requirement of agent-based state management in a distributed environment. By utilizing Akka.NET:
+- Refactored the state management to be handled by actors (OrderActor), which are inherently suitable for distributed and concurrent scenarios. 
+- The system can easily be scaled and deployed across multiple machines, thanks to Akka.NET's remote deployment capabilities.
+- The asynchronous and non-blocking nature of Akka.NET actors makes the system efficient and responsive.
+- The ability to handle state and concurrency simplifies the complexity traditionally associated with distributed systems development.
+- By using Akka.NET's MailboxProcessor or equivalent features, we ensure that our application can manage state efficiently across a distributed environment, making it robust and scalable.
+
+### Summary
+The refactored system using Akka.NET provides a scalable, distributed solution for order processing, showcasing the power and simplicity of using actor-based models in complex, distributed applications.

@@ -33,7 +33,6 @@ open Akka.Remote
 open Akka.Configuration
 
 
-
 // -------------------------
 // Types and Event Definitions
 // -------------------------
@@ -185,63 +184,7 @@ let processOrderUpdateTesting (orderID: OrderID) (orderDetails: OrderDetails) : 
     }
 
 
-let exampleOrders : OrderEmitted = [
-    { Currency = "BTCUSD"; Price = 10000.0; OrderType = "Buy"; Quantity = 1.0; Exchange = "Bitfinex" }
-    { Currency = "ETHUSD"; Price = 500.0; OrderType = "Sell"; Quantity = 10.0; Exchange = "Kraken" }
-    { Currency = "LTCUSD"; Price = 150.0; OrderType = "Buy"; Quantity = 20.0; Exchange = "Bitstamp" }
-]
-
-
-// Helper Functions for Testing 
-let random = Random()
-let generateRandomID (length: int) (isNumeric: bool) =
-    let chars = if isNumeric then "0123456789" else "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    let randomChars = Array.init length (fun _ -> chars.[random.Next(chars.Length)])
-    String(randomChars)
-    
-let generateRandomFulfillmentStatus () =
-    let statuses = ["FullyFulfilled"; "PartiallyFulfilled"; "OneSideFilled"]
-    let index = random.Next(statuses.Length)
-    statuses.[index]
-    
-let generateRandomRemainingQuantity (status: string) (maxQuantity: float) =
-    match status with
-    | "FullyFulfilled" -> 0.0
-    | "PartiallyFulfilled" -> random.NextDouble() * maxQuantity
-    | "OneSideFilled" -> maxQuantity
-    | _ -> maxQuantity
-    
-let createOrderTesting (orderDetails: OrderDetails) : OrderID =
-    match orderDetails.Exchange with
-    | "Kraken" -> generateRandomID 15 false
-    | "Bitstamp" -> generateRandomID 4 true
-    | "Bitfinex" -> generateRandomID 9 true
-    | _ -> "010101010"
-
-
-let processOrderUpdateTesting (orderID: OrderID) (orderDetails: OrderDetails) : Async<Result<OrderStatusUpdate, string>> =
-    async {
-        printfn "Order update retrieval"
-        do! Async.Sleep(3000)
-
-        let simulatedFulfillmentStatus = generateRandomFulfillmentStatus ()
-        let simulatedRemainingQuantity = generateRandomRemainingQuantity simulatedFulfillmentStatus orderDetails.Quantity
-
-        let updateResult = updateOrderStatus (orderDetails.Exchange, orderID, simulatedFulfillmentStatus, simulatedRemainingQuantity)
-        if updateResult then
-            printfn "Order status updated in database"
-            let orderStatusUpdate = {
-                FulfillmentStatus = simulatedFulfillmentStatus
-                RemainingQuantity = simulatedRemainingQuantity
-            }
-            return Result.Ok orderStatusUpdate
-        else
-            return Result.Error "Failed to update order in database"
-    }
-
-
-// Submitting a new order on an exchange
-// Involves Making API Calls and Parsing Data
+// Helper Function for submitting a new order on an exchange
 // Involves Making API Calls and Parsing Data
 let submitOrderAsync (orderDetails: OrderDetails) : Async<Result<OrderID, string>> = 
     async {
@@ -500,7 +443,20 @@ let createAndProcessOrders (ordersEmitted: OrderEmitted) : Async<Result<OrderUpd
             return Result.Error firstError
     }
 
-// Testing Setup
+
+let sendOrderMessage (queueName: string) (orderUpdate: Event) =
+    let json = JsonConvert.SerializeObject(orderUpdate)
+    sendMessageAsync(queueName, json)
+    Result.Ok ()
+
+
+let exampleOrders : OrderEmitted = [
+    { Currency = "BTCUSD"; Price = 10000.0; OrderType = "Buy"; Quantity = 1.0; Exchange = "Bitfinex" }
+    { Currency = "ETHUSD"; Price = 500.0; OrderType = "Sell"; Quantity = 10.0; Exchange = "Kraken" }
+    { Currency = "LTCUSD"; Price = 150.0; OrderType = "Buy"; Quantity = 20.0; Exchange = "Bitstamp" }
+]
+
+
 let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
     printfn "Handling order ID: %s" orderID
     let messageContent = sprintf "OrderID: %s, Quantity: %f" orderID orderDetails.Quantity
@@ -522,9 +478,19 @@ let rec handleOrder (orderDetails: OrderDetails) (orderID: OrderID) =
     | false ->
         Console.WriteLine("Failed to add order with ID " + orderID + " to database.")
 
-
+let runOrderManagementTesting () =
+    let ordersEmitted = exampleOrders
+    printfn "Orders emitted: %A" ordersEmitted
+    ordersEmitted |> List.iter (fun orderDetails ->
+        let orderID = createOrderTesting orderDetails
+        match orderID with
+        | "" -> 
+            Console.WriteLine("Cannot process order: OrderID is unknown.")
+        | id ->
+            handleOrder orderDetails id
+    )
+    
 let runOrderManagement (ordersEmitted: OrderEmitted) =
-    // let ordersEmitted = exampleOrders
     printfn "Orders emitted: %A" ordersEmitted
     ordersEmitted |> List.iter (fun orderDetails ->
         let orderID = createOrderTesting orderDetails
@@ -536,7 +502,7 @@ let runOrderManagement (ordersEmitted: OrderEmitted) =
     )
     
 
-// Implementation of MailBoxProcessor Order Agent
+// Implementation of MailBox Agent
 type OrderMessage = 
     | ProcessOrders of OrderEmitted
     | Stop
@@ -571,16 +537,129 @@ let rec receiveAndProcessOrdersBasic () =
     }
 
 
+// -------------------------
+// Implementation for Extra Credit Task2
+// -------------------------
+
+// #########################
+// 1. Implementation using FSharp Cloud Agent
+// #########################
+
+// let orderCloudAgent (agentId: ActorKey) = MailboxProcessor<OrderMessage>.Start(fun inbox ->
+//     let rec messageLoop () = async {
+//         let! msg = inbox.Receive()
+//         match msg with
+//         | ProcessOrders ordersEmitted ->
+//             runOrderManagement ordersEmitted
+//             return! messageLoop()
+//         | Stop ->
+//             printfn "Stopping order processing agent."
+//     }
+//     messageLoop()
+// )
+
+// // Refactoring to CloudAgent
+// let connStr = "Endpoint=sb://arbitragegainer.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=RX56IkxeBgdYjM6OoHXozGRw37tsUQrGk+ASbNEYcl0="
+// let queueName = "orderqueue"
+// let cloudConn = CloudConnection.WorkerCloudConnection(ServiceBusConnection connStr, Connections.Queue queueName)
+// ConnectionFactory.StartListening(cloudConn, orderCloudAgent >> BasicCloudAgent) |> ignore
+// let distributedPost = ConnectionFactory.SendToWorkerPool cloudConn
+
+// let rec receiveAndProcessOrdersDistributed () =
+//     async {
+//         printfn "Waiting for message from 'orderqueue'..."
+//         let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+//         printfn "Received message: %s" receivedMessageJson
+//         if not (String.IsNullOrEmpty receivedMessageJson) then
+//             try
+//                 let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+//                 distributedPost (ProcessOrders ordersEmitted) |> ignore
+//                 // orderAgent.Post(ProcessOrders ordersEmitted)
+//             with
+//             | ex ->
+//                 printfn "An exception occurred: %s" ex.Message
+//     }
+
+
+// #########################
+// 2. Imlementation using Akka.NET
+// #########################
+
+// Initialize Actor
+type OrderActor() = 
+    inherit ReceiveActor()
+
+    let runOrderManagement (ordersEmitted: OrderEmitted) =
+        printfn "Orders emitted: %A" ordersEmitted
+        ordersEmitted |> List.iter (fun orderDetails ->
+            let orderID = createOrderTesting orderDetails
+            match orderID with
+            | "" -> 
+                Console.WriteLine("Cannot process order: OrderID is unknown.")
+            | id ->
+                handleOrder orderDetails id
+        )
+
+    do
+        base.Receive<OrderMessage>(fun message ->
+            match message with
+            | ProcessOrders ordersEmitted ->
+                runOrderManagement ordersEmitted
+            | Stop ->
+                printfn "Stopping order processing actor."
+        )
+
+// Configure Actor System
+let config = ConfigurationFactory.ParseString("""
+    akka {  
+        actor {
+            provider = "Akka.Remote.RemoteActorRefProvider, Akka.Remote"
+        }
+        remote {
+            dot-netty.tcp {
+                port = 8085
+                hostname = "localhost"
+            }
+        }
+    }
+    """)
+
+let system = ActorSystem.Create("OrderSystem", config)
+let orderActorRef = system.ActorOf<OrderActor>("orderActor")
+
+
+let rec receiveAndProcessOrdersAkka () =
+    async {
+        printfn "Waiting for message from 'orderqueue'..."
+        let! receivedMessageJson = async { return receiveMessageAsync "orderqueue" }
+        printfn "Received message: %s" receivedMessageJson
+        if not (String.IsNullOrEmpty receivedMessageJson) then
+            try
+                let ordersEmitted = JsonConvert.DeserializeObject<OrderEmitted>(receivedMessageJson)
+                orderActorRef <! ProcessOrders ordersEmitted  // 使用 Actor 处理消息
+            with
+            | ex ->
+                printfn "An exception occurred: %s" ex.Message
+    }
+
 // [<EntryPoint>]
 // let main arg =
-
+//
+//     // If Using the Basic Mailbox Processor
 //     async {
 //         do! receiveAndProcessOrdersBasic ()
 //     } |> Async.Start
+//     
+//     // If Using the FSharp Cloud Agent
+//     // receiveAndProcessOrdersDistributed () |> Async.Start
+//
+//     // If Using Akka.NET
+//     receiveAndProcessOrdersAkka () |> Async.Start
     
 //     printfn "Press any key to exit..."
 //     Console.ReadKey() |> ignore
+
+//     // Shut Down Actor System
+//     system.Terminate() |> Async.AwaitTask |> Async.RunSynchronously
+    
 //     0
-    
-    
-    
